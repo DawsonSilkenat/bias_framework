@@ -1,1 +1,2 @@
-manual_testing/adult/*
+adult/*
+__pycache__/*

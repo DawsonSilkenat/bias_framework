@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 pandas = "*"
 aif360 = "*"
+plotly = "*"
 
 [dev-packages]
 ipykernel = "*"
