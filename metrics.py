@@ -1,8 +1,11 @@
 from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score, matthews_corrcoef
+from sklearn.utils import resample
 from aif360.datasets import StandardDataset
 from aif360.metrics import ClassificationMetric
 import numpy as np
 import pandas as pd
+import scipy.stats 
+
 
 def get_error_metrics(y_true_value: np.array, y_predicted_value: np.array) -> dict[str, float]:
     """Computes a number of error metrics returns a dictionary containing the error metrics names and values.
@@ -30,8 +33,7 @@ def get_error_metrics(y_true_value: np.array, y_predicted_value: np.array) -> di
     return metrics
 
 
-def get_fairness_metrics(df_validation: pd.DataFrame, true_values: np.array, predicted_values: np.array, privilege_function: callable) -> dict[str, float]:
-    
+def get_fairness_metrics(df_validation: pd.DataFrame, true_values: np.array, predicted_values: np.array, privilege_function: callable) -> dict[str, float]:    
     df_validation = df_validation.copy()
     df_validation["Is Privileged"] = df_validation.apply(privilege_function, axis=1)
     
@@ -49,7 +51,7 @@ def get_fairness_metrics(df_validation: pd.DataFrame, true_values: np.array, pre
                       privileged_classes=[[1]]
                       )
     
-    dataset_with_predicted_class = StandardDataset(df_dataset_with_true_class, 
+    dataset_with_predicted_class = StandardDataset(df_dataset_with_predicted_class, 
                       label_name="Class Label", 
                       favorable_classes=[1],
                       protected_attribute_names=["Is Privileged"], 
@@ -57,13 +59,13 @@ def get_fairness_metrics(df_validation: pd.DataFrame, true_values: np.array, pre
                       )
     
 
-    class_metric = ClassificationMetric(dataset_with_true_class, dataset_with_predicted_class, unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
+    classification_metric = ClassificationMetric(dataset_with_true_class, dataset_with_predicted_class, unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
 
     metrics = dict()
-    metrics["statistical parity difference"] = abs(class_metric.statistical_parity_difference())
-    metrics["average odds difference"]       = abs(class_metric.average_abs_odds_difference())
-    metrics["equal opportunity difference"]  = abs(class_metric.equal_opportunity_difference())
-    metrics["error rate difference"]         = abs(class_metric.error_rate_difference())
+    metrics["statistical parity difference"] = abs(classification_metric.statistical_parity_difference())
+    metrics["average odds difference"]       = abs(classification_metric.average_abs_odds_difference())
+    metrics["equal opportunity difference"]  = abs(classification_metric.equal_opportunity_difference())
+    metrics["error rate difference"]         = abs(classification_metric.error_rate_difference())
     
     return metrics
 
@@ -75,6 +77,41 @@ def get_all_metrics(df_validation: pd.DataFrame, true_values: np.array, predicte
     }
     
     
+def bootstrap_error_metrics(df_validation: pd.DataFrame, true_values: np.array, predicted_values: np.array, privilege_function: callable, repetitions: int = 100, seed=None) -> dict[str, dict[str, dict[str, float]]]:
+    
+    rng = None
+    # Set the random number generator for reproduceable results
+    if seed is not None:
+        rng = np.random.default_rng(seed)
+    
+    # Record the result of each repetition 
+    bootstrapped_metrics = []
+    for _ in range(repetitions):
+        df_validation_boot, true_values_boot, predicted_values_boot = resample(df_validation, true_values, predicted_values, random_state=rng)
+        bootstrapped_metrics.append(get_all_metrics(df_validation_boot, true_values_boot, predicted_values_boot, privilege_function))
+    
+    # Create the dictionary to return containing the calculated statistics about each metric
+    metric_stats = dict()
+    for metric_type in bootstrapped_metrics[0].keys():
+        metric_stats[metric_type] = dict()
+        
+        for metric_name in bootstrapped_metrics[0][metric_type].keys():
+            metric_results = [result[metric_type][metric_name]  for result in bootstrapped_metrics]
+            value = np.mean(metric_results)
+            std = np.std(metric_results)
+            
+            metric_stats[metric_type][metric_name] = {
+                "value": value,
+                "standard deviation": std,
+                "confidence interval": scipy.stats.norm.interval(0.95, loc=value, scale=std / (repetitions ** 0.5)),
+                "skew": scipy.stats.skew(metric_results),
+                "kurtosis": scipy.stats.kurtosis(metric_results),
+                "quartiles": np.percentile(metric_results, [0, 25, 50, 75, 100]) 
+            }
+            
+    return metric_stats   
+
+  
 def fairea_model_mutation(df_validation: pd.DataFrame, true_values: np.array, predicted_values: np.array, privilege_function: callable, fractions_to_mutate: list[float] = [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1], repetitions=50) -> list[tuple[float, dict[str, dict[str, float]]]]:
     # Source: https://solar.cs.ucl.ac.uk/pdf/hort2021fairea.pdf
     

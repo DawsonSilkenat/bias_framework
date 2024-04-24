@@ -4,10 +4,17 @@ from ml_dummy import ML_Model
 from metrics import *
 import plotly.graph_objs as go
 
-
 from aif360.datasets import StandardDataset
 from aif360.algorithms.preprocessing import Reweighing
 
+import time
+
+
+import warnings
+# aif360 seems to do something pandas doesn't like, and it makes it hard to debug when all I read are these warning messages
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+# warnings.filterwarnings("ignore")
 
 
 class Bias_Framework:
@@ -87,14 +94,21 @@ class Bias_Framework:
     
     
     def run_framework(self):
+        start = time.time()
         fairea_args = self.__no_debiasing()
+        print(f"{time.time() - start} seconds to run with no debiasing")
+        start = time.time()
         self.__fairea = fairea_model_mutation(*fairea_args)
+        print(f"{time.time() - start} seconds to get fairea baseline")
+        start = time.time()
         self.__reweighing()
+        print(f"{time.time() - start} seconds to run reweighing")
     
     
     def show_fairea_graph(self, debias_methodology: str, error_metric: str, fairness_metric: str) -> None:
-        figure = self.__create_plot(debias_methodology, error_metric, fairness_metric)
-        figure.update_layout(title=f"")
+        figure = self.__create_figure(debias_methodology, error_metric, fairness_metric)
+        figure.update_layout(title=f"{debias_methodology} impact on {error_metric} and {fairness_metric}")
+        figure.show() 
     
     
     def show_many_fairea_graphs(self, debias_methodology: str, error_metric: list[str], fairness_metric: list[str]) -> None:
@@ -107,28 +121,71 @@ class Bias_Framework:
     
     
     def show_all_fairea_graphs(self) -> None:
-        self 
+        pass 
         
     
-    def __create_plot(self, debias_methodology: str, error_metric: str, fairness_metric: str) -> go.Figure:
+    def __create_figure(self, debias_methodology: str, error_metric: str, fairness_metric: str) -> go.Figure:
         fairea_labels = []
         fairea_x = []
         fairea_y = []
         
+        # Create the fairea curve 
         for mutation, metric in self.__fairea:
-            fairea_labels.append(mutation)
+            fairea_labels.append(f"F_{int(mutation * 100)}")
             fairea_x.append(metric["fairness"][fairness_metric])
             fairea_y.append(metric["error"][error_metric])
-            
-
-        fairea_curve = go.Scatter(x=fairea_x, y=fairea_y, mode="lines", name="fairea baseline", text=fairea_labels)
         
-        debias_x = self.__metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]
-        debias_y = self.__metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]
-        debias_result = go.Scatter(x=[debias_x], y=[debias_y], mode="markers", name="debiasing outcome")
+        fairea_curve = go.Scatter(
+            x=fairea_x, 
+            y=fairea_y, 
+            mode="lines+markers+text", 
+            name="fairea baseline", 
+            text=fairea_labels, 
+            textposition="bottom right"
+        )
         
-        layout = go.Layout(xaxis_title=f"Bias ({fairness_metric})", yaxis_title=f"Accuracy ({error_metric})")
-        return go.Figure(data=[debias_result, fairea_curve], layout=layout)
+        # Statistics regarding the debiasing technique to be plotted as a single point
+        debias_x = self.__metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["value"]
+        debias_y = self.__metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["value"]
+        
+        debias_result = go.Scatter(
+            x=[debias_x], 
+            y=[debias_y], 
+            mode="markers", 
+            name="debiasing outcome"
+        )
+        
+        # Error bars as a seprate plot so we can explain what they represent in the legend
+        confidence_interval_x = self.__metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["confidence interval"]
+        x_error_bars = go.Scatter(
+            x=confidence_interval_x,
+            y=[debias_y, debias_y],
+            mode="lines",
+            line=dict(color="blue", width=2),
+            name=f"95% confidence interval for {fairness_metric}"  
+        )
+        
+        confidence_interval_y = self.__metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["confidence interval"]
+        y_error_bars = go.Scatter(
+            x=[debias_x, debias_x],
+            y=confidence_interval_y,
+            mode="lines",
+            line=dict(color="blue", width=2),
+            name=f"95% confidence interval for {error_metric}"  
+        )
+        
+        layout = go.Layout(
+            xaxis_title=f"Bias ({fairness_metric})", 
+            yaxis_title=f"Error ({error_metric})",
+            width=800,
+            height=800,
+        )
+        
+        figure = go.Figure(data=[debias_result, x_error_bars, y_error_bars, fairea_curve], layout=layout)
+        figure.update_xaxes(tick0=0, dtick=0.1) 
+        figure.update_yaxes(tick0=0, dtick=0.1)
+        
+        return figure
     
     
     def get_debias_methodologies(self) -> list[str]:
@@ -154,9 +211,9 @@ class Bias_Framework:
         predicted_values = self.model.predict(self.df_x_validate)
         true_values = self.df_y_validate.to_numpy()
         
-        self.__metrics_by_debiasing_technique["no debiasing"] = get_all_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)
+        self.__metrics_by_debiasing_technique["no debiasing"] = bootstrap_error_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)
         
-        # Most of these functions won't return anything, this one does so we can run fairea without recomputing
+        # Most debiasing analysis functions won't return anything, this one does so we can run fairea without recomputing
         return self.df_x_validate, true_values, predicted_values, self.privilege_function
         
         
@@ -176,7 +233,7 @@ class Bias_Framework:
         # Applying reweighing to the training data
         reweighing = Reweighing(unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
         transformed_data = reweighing.fit_transform(training_dataset)
-        self.model.fit(transformed_data.features, transformed_data.labels.ravel())
+        self.model.fit(transformed_data.features, transformed_data.labels.ravel(), sample_weight=transformed_data.instance_weights)
         
         # Applying the required modifications to the validation data and getting results for metric calculation
         df_x_validate = self.df_x_validate.copy()
@@ -184,5 +241,5 @@ class Bias_Framework:
         predicted_values = self.model.predict(df_x_validate)
         true_values = self.df_y_validate.to_numpy()
         
-        self.__metrics_by_debiasing_technique["reweighing"] = get_all_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)
-
+        self.__metrics_by_debiasing_technique["reweighing"] = bootstrap_error_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)
+        
