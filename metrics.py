@@ -103,7 +103,7 @@ def bootstrap_error_metrics(df_validation: pd.DataFrame, true_values: np.array, 
             metric_stats[metric_type][metric_name] = {
                 "value": value,
                 "standard deviation": std,
-                "confidence interval": scipy.stats.norm.interval(0.95, loc=value, scale=std / (repetitions ** 0.5)),
+                "confidence interval": scipy.stats.norm.interval(0.95, loc=value, scale=std), #/ (repetitions ** 0.5)
                 "skew": scipy.stats.skew(metric_results),
                 "kurtosis": scipy.stats.kurtosis(metric_results),
                 "quartiles": np.percentile(metric_results, [0, 25, 50, 75, 100]) 

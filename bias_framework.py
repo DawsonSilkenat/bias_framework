@@ -3,18 +3,17 @@ import numpy as np
 from ml_dummy import ML_Model
 from metrics import *
 import plotly.graph_objs as go
-
+from plotly.subplots import make_subplots
 from aif360.datasets import StandardDataset
 from aif360.algorithms.preprocessing import Reweighing
 
+# This is only for information on runtime rather than used functionally
 import time
 
-
-import warnings
 # aif360 seems to do something pandas doesn't like, and it makes it hard to debug when all I read are these warning messages
+import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-# warnings.filterwarnings("ignore")
 
 
 class Bias_Framework:
@@ -105,26 +104,55 @@ class Bias_Framework:
         print(f"{time.time() - start} seconds to run reweighing")
     
     
-    def show_fairea_graph(self, debias_methodology: str, error_metric: str, fairness_metric: str) -> None:
-        figure = self.__create_figure(debias_methodology, error_metric, fairness_metric)
-        figure.update_layout(title=f"{debias_methodology} impact on {error_metric} and {fairness_metric}")
+    def show_fairea_graph(self, error_metric: str, fairness_metric: str) -> None:
+        figure = self.__create_figure_with_fairea(error_metric, fairness_metric)
+        figure.update_layout(title=f"Debias Methodologies impact on {error_metric} and {fairness_metric}")
         figure.show() 
     
     
-    def show_many_fairea_graphs(self, debias_methodology: str, error_metric: list[str], fairness_metric: list[str]) -> None:
+    def show_many_fairea_graphs(self, error_metric: list[str], fairness_metric: list[str]) -> None:
         if isinstance(error_metric, str):
             error_metric = [error_metric]
         if isinstance(fairness_metric, str):
             fairness_metric = [fairness_metric]
-        # TODO
-        pass
+            
+        make_subplots
     
     
     def show_all_fairea_graphs(self) -> None:
-        pass 
-        
+        self.show_many_fairea_graphs(self.get_error_metric_names(), self.get_bias_metric_names()) 
     
-    def __create_figure(self, debias_methodology: str, error_metric: str, fairness_metric: str) -> go.Figure:
+    
+    def __create_debias_methodology_scatter(self, debias_methodology: str, error_metric: str, fairness_metric: str) -> go.Scatter:
+        # Statistics regarding the debiasing technique to be plotted as a single point
+        debias_x = self.__metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["value"]
+        debias_y = self.__metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["value"]
+        
+        # Error bars to put on the single point
+        confidence_interval = self.__metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["confidence interval"]
+        error_bars_x = (confidence_interval[0] - confidence_interval[1]) / 2
+        
+        confidence_interval = self.__metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["confidence interval"]
+        error_bars_y = (confidence_interval[0] - confidence_interval[1]) / 2
+        
+        debias_result = go.Scatter(
+            x=[debias_x], 
+            error_x=dict(type='data', array=[error_bars_x]), 
+            y=[debias_y], 
+            error_y=dict(type='data', array=[error_bars_y]), 
+            mode="markers", 
+            name=f"{debias_methodology} outcome"
+        )
+        
+        return debias_result
+    
+    
+    def __create_figure_with_fairea(self, error_metric: str, fairness_metric: str, debias_methodologies: list[str]=None) -> go.Figure:
+        if debias_methodologies is None:
+            # If the debias_methodologies to be plotted are not specified, plot all but 'no debiasing' which will be covered by fairea
+            debias_methodologies = self.get_debias_methodologies()
+            debias_methodologies.remove("no debiasing")
+            
         fairea_labels = []
         fairea_x = []
         fairea_y = []
@@ -144,44 +172,15 @@ class Bias_Framework:
             textposition="bottom right"
         )
         
-        # Statistics regarding the debiasing technique to be plotted as a single point
-        debias_x = self.__metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["value"]
-        debias_y = self.__metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["value"]
-        
-        debias_result = go.Scatter(
-            x=[debias_x], 
-            y=[debias_y], 
-            mode="markers", 
-            name="debiasing outcome"
-        )
-        
-        # Error bars as a seprate plot so we can explain what they represent in the legend
-        confidence_interval_x = self.__metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["confidence interval"]
-        x_error_bars = go.Scatter(
-            x=confidence_interval_x,
-            y=[debias_y, debias_y],
-            mode="lines",
-            line=dict(color="blue", width=2),
-            name=f"95% confidence interval for {fairness_metric}"  
-        )
-        
-        confidence_interval_y = self.__metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["confidence interval"]
-        y_error_bars = go.Scatter(
-            x=[debias_x, debias_x],
-            y=confidence_interval_y,
-            mode="lines",
-            line=dict(color="blue", width=2),
-            name=f"95% confidence interval for {error_metric}"  
-        )
-        
         layout = go.Layout(
             xaxis_title=f"Bias ({fairness_metric})", 
             yaxis_title=f"Error ({error_metric})",
-            width=800,
-            height=800,
+            # width=800,
+            # height=800,
         )
         
-        figure = go.Figure(data=[debias_result, x_error_bars, y_error_bars, fairea_curve], layout=layout)
+        scatter_plots = [self.__create_debias_methodology_scatter(method, error_metric, fairness_metric) for method in debias_methodologies]
+        figure = go.Figure(data=[*scatter_plots, fairea_curve], layout=layout)
         figure.update_xaxes(tick0=0, dtick=0.1) 
         figure.update_yaxes(tick0=0, dtick=0.1)
         
@@ -189,17 +188,17 @@ class Bias_Framework:
     
     
     def get_debias_methodologies(self) -> list[str]:
-        return self.__metrics_by_debiasing_technique.keys()
+        return list(self.__metrics_by_debiasing_technique.keys())
     
     
     def get_error_metric_names(self) -> list[str]:
-        some_debias = self.__metrics_by_debiasing_technique.keys()[0]
-        return self.__metrics_by_debiasing_technique[some_debias]["error"].keys()
+        some_debias = list(self.__metrics_by_debiasing_technique.keys())[0]
+        return list(self.__metrics_by_debiasing_technique[some_debias]["error"].keys())
             
                  
     def get_bias_metric_names(self) -> list[str]:
-        some_debias = self.__metrics_by_debiasing_technique.keys()[0]
-        return self.__metrics_by_debiasing_technique[some_debias]["fairness"].keys()
+        some_debias = list(self.__metrics_by_debiasing_technique.keys())[0]
+        return list(self.__metrics_by_debiasing_technique[some_debias]["fairness"].keys())
     
     
     def get_raw_data(self) -> list[str]:
