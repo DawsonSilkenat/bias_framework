@@ -3,6 +3,7 @@ import numpy as np
 from ml_dummy import ML_Model
 from metrics import *
 import plotly.graph_objs as go
+import plotly.express as px
 from plotly.subplots import make_subplots
 from aif360.datasets import StandardDataset
 from aif360.algorithms.preprocessing import Reweighing
@@ -105,25 +106,52 @@ class Bias_Framework:
     
     
     def show_fairea_graph(self, error_metric: str, fairness_metric: str) -> None:
-        figure = self.__create_figure_with_fairea(error_metric, fairness_metric)
+        data = self.__create_scatter_with_fairea(error_metric, fairness_metric)
+        
+        layout = go.Layout(
+            xaxis_title=f"Bias ({fairness_metric})", 
+            yaxis_title=f"Error ({error_metric})"
+        )
+        
+        figure = go.Figure(data=data, layout=layout)
         figure.update_layout(title=f"Debias Methodologies impact on {error_metric} and {fairness_metric}")
+        figure.update_xaxes(tick0=0, dtick=0.1) 
+        figure.update_yaxes(tick0=0, dtick=0.1)
         figure.show() 
     
     
-    def show_many_fairea_graphs(self, error_metric: list[str], fairness_metric: list[str]) -> None:
-        if isinstance(error_metric, str):
-            error_metric = [error_metric]
-        if isinstance(fairness_metric, str):
-            fairness_metric = [fairness_metric]
+    def show_many_fairea_graphs(self, error_metrics: list[str], fairness_metrics: list[str]) -> None:
+        if isinstance(error_metrics, str):
+            error_metrics = [error_metrics]
+        if isinstance(fairness_metrics, str):
+            fairness_metrics = [fairness_metrics]
             
-        make_subplots
-    
-    
+        subplots = make_subplots(len(error_metrics), len(fairness_metrics))
+        
+        for row, error_metric in enumerate(error_metrics):
+            for col, fairness_metric in enumerate(fairness_metrics):
+                plots = self.__create_scatter_with_fairea(error_metric, fairness_metric, showlegend=(row==0 and col==0))
+                for plot in plots:
+                    # The subplots are 1 indexed, while enumerate is 0 index, hence the add 1
+                    subplots.add_trace(plot, row=row+1, col=col+1)
+                
+                subplots.update_xaxes(tick0=0, dtick=0.1, row=row+1, col=col+1) 
+                subplots.update_yaxes(tick0=0, dtick=0.1, row=row+1, col=col+1)
+                
+                if col == 0:
+                    subplots.update_yaxes(title_text=f"Error ({error_metric})", col=col+1, row=row+1)
+                if row == len(error_metrics) - 1:
+                    subplots.update_xaxes(title_text=f"Bias ({fairness_metric})", col=col+1, row=row+1)
+        
+        subplots.update_layout(height=800*len(fairness_metrics), width=200*len(error_metrics)) 
+        subplots.show()
+                    
+            
     def show_all_fairea_graphs(self) -> None:
         self.show_many_fairea_graphs(self.get_error_metric_names(), self.get_bias_metric_names()) 
     
     
-    def __create_debias_methodology_scatter(self, debias_methodology: str, error_metric: str, fairness_metric: str) -> go.Scatter:
+    def __create_debias_methodology_scatter(self, debias_methodology: str, error_metric: str, fairness_metric: str, color: str, showlegend=True) -> go.Scatter:
         # Statistics regarding the debiasing technique to be plotted as a single point
         debias_x = self.__metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["value"]
         debias_y = self.__metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["value"]
@@ -137,17 +165,19 @@ class Bias_Framework:
         
         debias_result = go.Scatter(
             x=[debias_x], 
-            error_x=dict(type='data', array=[error_bars_x]), 
+            error_x={"type": "data", "array": [error_bars_x]}, 
             y=[debias_y], 
-            error_y=dict(type='data', array=[error_bars_y]), 
+            error_y={"type": "data", "array": [error_bars_y]}, 
             mode="markers", 
-            name=f"{debias_methodology} outcome"
+            name=f"{debias_methodology} outcome",
+            showlegend=showlegend,
+            marker_color=color
         )
         
         return debias_result
     
     
-    def __create_figure_with_fairea(self, error_metric: str, fairness_metric: str, debias_methodologies: list[str]=None) -> go.Figure:
+    def __create_scatter_with_fairea(self, error_metric: str, fairness_metric: str, debias_methodologies: list[str]=None, showlegend=True) -> list[go.Scatter]:
         if debias_methodologies is None:
             # If the debias_methodologies to be plotted are not specified, plot all but 'no debiasing' which will be covered by fairea
             debias_methodologies = self.get_debias_methodologies()
@@ -163,28 +193,23 @@ class Bias_Framework:
             fairea_x.append(metric["fairness"][fairness_metric])
             fairea_y.append(metric["error"][error_metric])
         
+        
+        colors = px.colors.qualitative.Dark24
+        
         fairea_curve = go.Scatter(
             x=fairea_x, 
             y=fairea_y, 
             mode="lines+markers+text", 
             name="fairea baseline", 
             text=fairea_labels, 
-            textposition="bottom right"
+            textposition="bottom right", 
+            showlegend=showlegend,
+            line_color=colors[0]
         )
+        colors = colors[1:]
         
-        layout = go.Layout(
-            xaxis_title=f"Bias ({fairness_metric})", 
-            yaxis_title=f"Error ({error_metric})",
-            # width=800,
-            # height=800,
-        )
-        
-        scatter_plots = [self.__create_debias_methodology_scatter(method, error_metric, fairness_metric) for method in debias_methodologies]
-        figure = go.Figure(data=[*scatter_plots, fairea_curve], layout=layout)
-        figure.update_xaxes(tick0=0, dtick=0.1) 
-        figure.update_yaxes(tick0=0, dtick=0.1)
-        
-        return figure
+        scatter_plots = [self.__create_debias_methodology_scatter(method, error_metric, fairness_metric, color=color, showlegend=showlegend) for method, color in zip(debias_methodologies, colors)]
+        return [*scatter_plots, fairea_curve]
     
     
     def get_debias_methodologies(self) -> list[str]:
