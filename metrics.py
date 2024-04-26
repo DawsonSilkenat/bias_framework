@@ -44,19 +44,21 @@ def get_fairness_metrics(df_validation: pd.DataFrame, true_values: np.array, pre
     df_dataset_with_predicted_class["Class Label"] = predicted_values
     
     # I don't believe the values of protected_attribute_names and privileged_classes matter here since this is really set in ClassificationMetric, however these are required fields so might as well set them reasonably. 
-    dataset_with_true_class = StandardDataset(df_dataset_with_true_class, 
-                      label_name="Class Label", 
-                      favorable_classes=[1],
-                      protected_attribute_names=["Is Privileged"], 
-                      privileged_classes=[[1]]
-                      )
+    dataset_with_true_class = StandardDataset(
+        df_dataset_with_true_class, 
+        label_name="Class Label", 
+        favorable_classes=[1],
+        protected_attribute_names=["Is Privileged"], 
+        privileged_classes=[[1]]
+    )
     
-    dataset_with_predicted_class = StandardDataset(df_dataset_with_predicted_class, 
-                      label_name="Class Label", 
-                      favorable_classes=[1],
-                      protected_attribute_names=["Is Privileged"], 
-                      privileged_classes=[[1]]
-                      )
+    dataset_with_predicted_class = StandardDataset(
+        df_dataset_with_predicted_class, 
+        label_name="Class Label", 
+        favorable_classes=[1],
+        protected_attribute_names=["Is Privileged"], 
+        privileged_classes=[[1]]
+    )
     
 
     classification_metric = ClassificationMetric(dataset_with_true_class, dataset_with_predicted_class, unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
