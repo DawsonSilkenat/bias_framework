@@ -35,7 +35,6 @@ class Bias_Framework:
         
         # Not all models implement a function for prediction probability. Probabilities are required for some postprocessing debiasing. The CalibratedClassifierCV method preforms probability calibration, which also adds this functionality if it is not part of the model
         self.model = CalibratedClassifierCV(estimator=model)
-        # self.model = model
         
         target_variable = df_training_data.columns[-1] 
 
@@ -101,21 +100,25 @@ class Bias_Framework:
     
     def run_framework(self):
         start = time.time()
-        validation_true_values, validation_predicted_values = self.__no_debiasing()
+        training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities = self.__no_debiasing()
         print(f"{time.time() - start} seconds to run with no debiasing")
         
-        start = time.time()
-        self.__fairea = fairea_model_mutation(self.df_x_validate, validation_true_values, validation_predicted_values, self.privilege_function)
-        print(f"{time.time() - start} seconds to get fairea baseline")
+        # start = time.time()
+        # self.__fairea = fairea_model_mutation(self.df_x_validate, self.df_y_validate.to_numpy(), validation_predicted_values, self.privilege_function)
+        # print(f"{time.time() - start} seconds to get fairea baseline")
         
         # TODO uncomment, I just want to reduce runtime while testing
-        start = time.time()
-        self.__learning_fair_representation() 
-        print(f"{time.time() - start} seconds to run learning fair representation")
+        # start = time.time()
+        # self.__learning_fair_representation() 
+        # print(f"{time.time() - start} seconds to run learning fair representation")
+        
+        # start = time.time()
+        # self.__reweighing()
+        # print(f"{time.time() - start} seconds to run reweighing")
         
         start = time.time()
-        self.__reweighing()
-        print(f"{time.time() - start} seconds to run reweighing")
+        self.__reject_option_classification(training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities)
+        print(f"{time.time() - start} seconds to run reject option classification")
     
     
     def show_fairea_graph(self, error_metric: str, fairness_metric: str) -> None:
@@ -245,13 +248,18 @@ class Bias_Framework:
     
     def __no_debiasing(self):
         self.model.fit(self.df_x_train, self.df_y_train)
+        training_predicted_values = self.model.predict(self.df_x_train)
         validation_predicted_values = self.model.predict(self.df_x_validate)
-        validation_true_values = self.df_y_validate.to_numpy()
         
-        self.__metrics_by_debiasing_technique["no debiasing"] = bootstrap_error_metrics(self.df_x_validate, validation_true_values, validation_predicted_values, self.privilege_function)
+        # TODO uncomment
+        # self.__metrics_by_debiasing_technique["no debiasing"] = bootstrap_error_metrics(self.df_x_validate, self.df_y_validate.to_numpy(), validation_predicted_values, self.privilege_function)
+        
+        # Binary classification problem means we only care about the probability of the possitive class
+        training_probabilities = self.model.predict_proba(self.df_x_train)[:, 1]
+        validation_probabilities = self.model.predict_proba(self.df_x_validate)[:, 1]
         
         # Most debiasing analysis functions won't return anything, however having default results is needed for fairea and postprocessing debiasing 
-        return validation_true_values, validation_predicted_values
+        return training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities
         
     def __0ptimized_preprocessing(self):
         # TODO this looks like it requires more knowledge of the dataset than I expect this framework to know at this point in time, so leaving this unimplemented
@@ -364,9 +372,56 @@ class Bias_Framework:
         pass
     
     
-    def __reject_option_classification(self):
-        pass
+    def __reject_option_classification(self, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities):
+        # TODO 
+        # Notes on ways we can get more out of each debiasing method, for those that have additional parameters we can set
+        # Metric name appears to be the obvious one, it is unclear to me what effect optimising wrt one metric would have accross all metrics
         
+        df_train = self.df_x_train.copy()
+        df_train["Is Privileged"] = df_train.apply(self.privilege_function, axis=1)
+        
+        df_train_true = df_train.copy()
+        df_train_true["Class Label"] = self.df_y_train.to_numpy()
+        training_dataset_true = StandardDataset(
+            df_train_true,
+            label_name="Class Label", 
+            favorable_classes=[1],
+            protected_attribute_names=["Is Privileged"], 
+            privileged_classes=[[1]]
+        )
+        
+        df_train_predictions = df_train.copy()
+        df_train_predictions["Probabilities"] = training_probabilities
+        df_train_predictions["Class Label"] = training_predicted_values
+        training_dataset_predictions = StandardDataset(
+            df_train_predictions,
+            label_name="Class Label", 
+            scores_name ="Probabilities",
+            favorable_classes=[1],
+            protected_attribute_names=["Is Privileged"], 
+            privileged_classes=[[1]]
+        )
+        
+        reject_option_classification = RejectOptionClassification([{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
+        reject_option_classification.fit(df_train_true, df_train_predictions)
+        
+        df_validate = self.df_x_validate.copy()
+        df_validate["Is Privileged"] = df_validate.apply(self.privilege_function, axis=1)
+        df_validate["Probabilities"] = validation_probabilities
+        df_validate["Class Label"] = validation_predicted_values
+        validation_dataset = StandardDataset(
+            df_validate, 
+            label_name="Class Label", 
+            scores_name ="Probabilities",
+            favorable_classes=[1],
+            protected_attribute_names=["Is Privileged"], 
+            privileged_classes=[[1]]
+        )
+        
+        predicted_values = reject_option_classification.predict(validation_dataset).labels.ravel()
+        true_values = self.df_y_validate.to_numpy()
+        
+        self.__metrics_by_debiasing_technique["reject option classification"] = bootstrap_error_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)        
     
     
         
