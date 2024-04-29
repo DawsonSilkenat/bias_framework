@@ -1,2 +1,4 @@
 adult/*
 __pycache__/*
+*.pyc
+*.png

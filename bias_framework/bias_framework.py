@@ -1,13 +1,14 @@
 import pandas as pd
 import numpy as np
-from ml_dummy import ML_Model
-from metrics import *
+from .metrics import *
 import plotly.graph_objs as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from aif360.datasets import StandardDataset
 from aif360.algorithms.preprocessing import LFR, Reweighing
 from aif360.algorithms.postprocessing.reject_option_classification import RejectOptionClassification
+from aif360.algorithms.postprocessing.calibrated_eq_odds_postprocessing import CalibratedEqOddsPostprocessing
+from aif360.algorithms.postprocessing.eq_odds_postprocessing import EqOddsPostprocessing
 from sklearn.calibration import CalibratedClassifierCV
 
 # I quite like the idea of Discrimination aware Ensemble, but it doesn't work with arbitrary classifiers. Might be something to look into later
@@ -22,7 +23,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 class Bias_Framework:
-    def __init__(self, model: ML_Model, df_training_data: pd.DataFrame, df_validation_data: pd.DataFrame) -> None:
+    def __init__(self, model, df_training_data: pd.DataFrame, df_validation_data: pd.DataFrame) -> None:
         """Creates an instance of the bias framework applied to the specified model and data
 
         Args:
@@ -103,22 +104,30 @@ class Bias_Framework:
         training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities = self.__no_debiasing()
         print(f"{time.time() - start} seconds to run with no debiasing")
         
-        # start = time.time()
-        # self.__fairea = fairea_model_mutation(self.df_x_validate, self.df_y_validate.to_numpy(), validation_predicted_values, self.privilege_function)
-        # print(f"{time.time() - start} seconds to get fairea baseline")
+        start = time.time()
+        self.__fairea = fairea_model_mutation(self.df_x_validate, self.df_y_validate.to_numpy(), validation_predicted_values, self.privilege_function)
+        print(f"{time.time() - start} seconds to get fairea baseline")
         
-        # TODO uncomment, I just want to reduce runtime while testing
-        # start = time.time()
-        # self.__learning_fair_representation() 
-        # print(f"{time.time() - start} seconds to run learning fair representation")
+        start = time.time()
+        self.__learning_fair_representation() 
+        print(f"{time.time() - start} seconds to run learning fair representation")
         
-        # start = time.time()
-        # self.__reweighing()
-        # print(f"{time.time() - start} seconds to run reweighing")
+        start = time.time()
+        self.__reweighing()
+        print(f"{time.time() - start} seconds to run reweighing")
         
         start = time.time()
         self.__reject_option_classification(training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities)
         print(f"{time.time() - start} seconds to run reject option classification")
+        
+        start = time.time()
+        self.__calibrated_equal_odds(training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities)
+        print(f"{time.time() - start} seconds to run calibrated equal odds")
+        
+        start = time.time()
+        self.__equal_odds(training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities)
+        print(f"{time.time() - start} seconds to run equal odds")
+        
     
     
     def show_fairea_graph(self, error_metric: str, fairness_metric: str) -> None:
@@ -251,8 +260,7 @@ class Bias_Framework:
         training_predicted_values = self.model.predict(self.df_x_train)
         validation_predicted_values = self.model.predict(self.df_x_validate)
         
-        # TODO uncomment
-        # self.__metrics_by_debiasing_technique["no debiasing"] = bootstrap_error_metrics(self.df_x_validate, self.df_y_validate.to_numpy(), validation_predicted_values, self.privilege_function)
+        self.__metrics_by_debiasing_technique["no debiasing"] = bootstrap_all_metrics(self.df_x_validate, self.df_y_validate.to_numpy(), validation_predicted_values, self.privilege_function)
         
         # Binary classification problem means we only care about the probability of the possitive class
         training_probabilities = self.model.predict_proba(self.df_x_train)[:, 1]
@@ -261,8 +269,8 @@ class Bias_Framework:
         # Most debiasing analysis functions won't return anything, however having default results is needed for fairea and postprocessing debiasing 
         return training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities
         
-    def __0ptimized_preprocessing(self):
-        # TODO this looks like it requires more knowledge of the dataset than I expect this framework to know at this point in time, so leaving this unimplemented
+    # def __0ptimized_preprocessing(self):
+        # this looks like it requires more knowledge of the dataset than I expect this framework to know at this point in time, so leaving this unimplemented
         # Refer back to these when it comes time to implement
         # from aif360.algorithms.preprocessing import OptimPreproc
         # from aif360.algorithms.preprocessing.optim_preproc_helpers.data_preproc_functions import load_preproc_data_adult
@@ -274,55 +282,65 @@ class Bias_Framework:
         # This method can product wildly different results. I should investigate how to make it more consistent.
         # More specifics:
         # This debiasing method involves creating a mapping from the input space to an intermediate representation, called a prototype, which is then what the ml model uses to classify. Finding this map from input to prototype involves solving an optimisation problem. This is done numerically, with randomly chosen initial values. For some values, it appears to produce absolutely terrible results
+        
+        # Run the debiasing method with the given number of prototypes so we can start to understand how the parameter changes debiasing and what a good value might be. 
+        # TODO error when running number_of_prototypes=15: Got predict_proba of shape (6513, 1), but need classifier with two classes.
+        for number_of_prototypes in [5, 10, 15]:
+            print(f"fair representation with k = {number_of_prototypes}")
+            
+            # Creating a StandardDataset with the required information about privileged group
+            df_train = self.df_x_train.copy()
+            df_train["Is Privileged"] = df_train.apply(self.privilege_function, axis=1)
+            df_train["Class Label"] = self.df_y_train.to_numpy()
 
-        
-        # TODO 
-        # Notes on ways we can get more out of each debiasing method, for those that have additional parameters we can set
-        # Adjust k, the number of intermediary prototypes before classification
-        # Ax, Ay, Az, not super clear on how I would go about modifying these
-        
-        # Creating a StandardDataset with the required information about privileged group
-        df_train = self.df_x_train.copy()
-        df_train["Is Privileged"] = df_train.apply(self.privilege_function, axis=1)
-        df_train["Class Label"] = self.df_y_train.to_numpy()
-        
-        training_dataset = StandardDataset(
-            df_train, 
-            label_name="Class Label", 
-            favorable_classes=[1],
-            protected_attribute_names=["Is Privileged"], 
-            privileged_classes=[[1]]
-        )
+            training_dataset = StandardDataset(
+                df_train, 
+                label_name="Class Label", 
+                favorable_classes=[1],
+                protected_attribute_names=["Is Privileged"], 
+                privileged_classes=[[1]]
+            )
 
-        # Applying learning fair representation to the training data
-        fair_representation = LFR(unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
-        transformed_data = fair_representation.fit_transform(training_dataset)
-        self.model.fit(transformed_data.features, transformed_data.labels.ravel())
-        
-        # Applying the required modifications to the validation data and getting results for metric calculation
-        df_x_validate = self.df_x_validate.copy()
-        df_x_validate["Is Privileged"] = df_x_validate.apply(self.privilege_function, axis=1)
-        
-        
-        # We need a dataset, rather than a dataframe, to apply our fair_representation to. 
-        # The class label shouldn't matter here but is a required argument for StandardDataset.
-        df_x_validate["Class Label"] = np.zeros(len(df_x_validate))
-        validation_dataset = StandardDataset(
-            df_x_validate, 
-            label_name="Class Label", 
-            favorable_classes=[1],
-            protected_attribute_names=["Is Privileged"], 
-            privileged_classes=[[1]]
-        )
-        
-        validation_dataset = fair_representation.transform(validation_dataset)
-        
-        predicted_values = self.model.predict(validation_dataset.features)
-        true_values = self.df_y_validate.to_numpy()
-        
-        self.__metrics_by_debiasing_technique["learning fair representation"] = bootstrap_error_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)
-    
-        
+            # Applying learning fair representation to the training data
+            fair_representation = LFR(unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}], k=number_of_prototypes)
+            transformed_data = fair_representation.fit_transform(training_dataset)
+            
+            
+            # print(np.unique(transformed_data.labels.ravel(), return_counts=True))
+            classes = np.unique(transformed_data.labels.ravel())
+            if len(classes) == 1:
+                # This debiasing methodology also mutates the labels, which can result in the classifier raising an exception.
+                # It is reasonable to assume that if only one class exists in the training data, it will be the only predicted value.
+                predicted_values = np.full(len(self.df_y_validate), classes[0])
+            else:
+                # Note that this debiasing methodology also seems to update the class labels. I'm not entirely clear on why, but does seem to get better results with the updated labels.
+                self.model.fit(transformed_data.features, transformed_data.labels.ravel())
+
+                # Applying the required modifications to the validation data and getting results for metric calculation
+                df_x_validate = self.df_x_validate.copy()
+                df_x_validate["Is Privileged"] = df_x_validate.apply(self.privilege_function, axis=1)
+
+
+                # We need a dataset, rather than a dataframe, to apply our fair_representation to. 
+                # The class label shouldn't matter here but is a required argument for StandardDataset.
+                df_x_validate["Class Label"] = np.zeros(len(df_x_validate))
+                validation_dataset = StandardDataset(
+                    df_x_validate, 
+                    label_name="Class Label", 
+                    favorable_classes=[1],
+                    protected_attribute_names=["Is Privileged"], 
+                    privileged_classes=[[1]]
+                )
+
+                validation_dataset = fair_representation.transform(validation_dataset)
+                predicted_values = self.model.predict(validation_dataset.features)
+                
+                
+            true_values = self.df_y_validate.to_numpy()
+
+            self.__metrics_by_debiasing_technique[f"learning fair representation with {number_of_prototypes} prototypes"] = bootstrap_all_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)
+
+
     def __reweighing(self):
         # Creating a StandardDataset with the required information about privileged group
         df_train = self.df_x_train.copy()
@@ -349,11 +367,10 @@ class Bias_Framework:
         predicted_values = self.model.predict(df_x_validate)
         true_values = self.df_y_validate.to_numpy()
         
-        self.__metrics_by_debiasing_technique["reweighing"] = bootstrap_error_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)
+        self.__metrics_by_debiasing_technique["reweighing"] = bootstrap_all_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)
         
     
-    def __disparate_impact_remover(self):
-        # TODO 
+    # def __disparate_impact_remover(self):
         # Notes on ways we can get more out of each debiasing method, for those that have additional parameters we can set
         # Adjust repair_level. Default is 1 (full), which the paper points out is likely to degrade classification accuracy. 
         # Could include some partial values, say 0.5 and 0.75 to get a better idea how adjusting this may impact model performance?
@@ -365,7 +382,7 @@ class Bias_Framework:
         pass
     
     
-    def __prejudice_remover(self):
+    # def __prejudice_remover(self):
         # This implementation does not work with the framework and trying to figure out what it is actually doing is confusing
         # Honestly, I find some of the code suspect. Remote execution of a python file rather than importing it
         # from aif360.algorithms.inprocessing.prejudice_remover import PrejudiceRemover
@@ -373,10 +390,109 @@ class Bias_Framework:
     
     
     def __reject_option_classification(self, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities):
+        # We want results for optimising with respect to each of the bias metrics, as it is unclear what the tradeoff will be
+        for metric_name in ["Statistical parity difference", "Average odds difference", "Equal opportunity difference"]:
+            df_train = self.df_x_train.copy()
+            df_train["Is Privileged"] = df_train.apply(self.privilege_function, axis=1)
+
+            df_train_true = df_train.copy()
+            df_train_true["Class Label"] = self.df_y_train.to_numpy()
+            training_dataset_true = StandardDataset(
+                df_train_true,
+                label_name="Class Label", 
+                favorable_classes=[1],
+                protected_attribute_names=["Is Privileged"], 
+                privileged_classes=[[1]]
+            )
+
+            df_train_predictions = df_train.copy()
+            df_train_predictions["Probabilities"] = training_probabilities
+            df_train_predictions["Class Label"] = training_predicted_values
+            training_dataset_predictions = StandardDataset(
+                df_train_predictions,
+                label_name="Class Label", 
+                scores_name ="Probabilities",
+                favorable_classes=[1],
+                protected_attribute_names=["Is Privileged"], 
+                privileged_classes=[[1]]
+            )
+
+            reject_option_classification = RejectOptionClassification([{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}], metric_name=metric_name)
+            reject_option_classification.fit(training_dataset_true, training_dataset_predictions)
+
+            df_validate = self.df_x_validate.copy()
+            df_validate["Is Privileged"] = df_validate.apply(self.privilege_function, axis=1)
+            df_validate["Probabilities"] = validation_probabilities
+            df_validate["Class Label"] = validation_predicted_values
+            validation_dataset = StandardDataset(
+                df_validate, 
+                label_name="Class Label", 
+                scores_name ="Probabilities",
+                favorable_classes=[1],
+                protected_attribute_names=["Is Privileged"], 
+                privileged_classes=[[1]]
+            )
+
+            predicted_values = reject_option_classification.predict(validation_dataset).labels.ravel()
+            true_values = self.df_y_validate.to_numpy()
+
+            self.__metrics_by_debiasing_technique[f"reject option classification {metric_name.lower()} optimised"] = bootstrap_all_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)        
+
+
+    def __calibrated_equal_odds(self, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities):
         # TODO 
         # Notes on ways we can get more out of each debiasing method, for those that have additional parameters we can set
-        # Metric name appears to be the obvious one, it is unclear to me what effect optimising wrt one metric would have accross all metrics
-        
+        # cost_constraint seems easy to do
+    
+        for cost_contraint in ["fpr", "fnr", "weighted"]:
+            df_train = self.df_x_train.copy()
+            df_train["Is Privileged"] = df_train.apply(self.privilege_function, axis=1)
+            
+            df_train_true = df_train.copy()
+            df_train_true["Class Label"] = self.df_y_train.to_numpy()
+            training_dataset_true = StandardDataset(
+                df_train_true,
+                label_name="Class Label", 
+                favorable_classes=[1],
+                protected_attribute_names=["Is Privileged"], 
+                privileged_classes=[[1]]
+            )
+            
+            df_train_predictions = df_train.copy()
+            df_train_predictions["Probabilities"] = training_probabilities
+            df_train_predictions["Class Label"] = training_predicted_values
+            training_dataset_predictions = StandardDataset(
+                df_train_predictions,
+                label_name="Class Label", 
+                scores_name ="Probabilities",
+                favorable_classes=[1],
+                protected_attribute_names=["Is Privileged"], 
+                privileged_classes=[[1]]
+            )
+            
+            calibrated_equal_odds = CalibratedEqOddsPostprocessing([{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}], cost_constraint=cost_contraint)
+            calibrated_equal_odds.fit(training_dataset_true, training_dataset_predictions)
+            
+            df_validate = self.df_x_validate.copy()
+            df_validate["Is Privileged"] = df_validate.apply(self.privilege_function, axis=1)
+            df_validate["Probabilities"] = validation_probabilities
+            df_validate["Class Label"] = validation_predicted_values
+            validation_dataset = StandardDataset(
+                df_validate, 
+                label_name="Class Label", 
+                scores_name ="Probabilities",
+                favorable_classes=[1],
+                protected_attribute_names=["Is Privileged"], 
+                privileged_classes=[[1]]
+            )
+            
+            predicted_values = calibrated_equal_odds.predict(validation_dataset).labels.ravel()
+            true_values = self.df_y_validate.to_numpy()
+            
+            self.__metrics_by_debiasing_technique[f"calibrated equal odds using {cost_contraint} cost"] = bootstrap_all_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)          
+
+
+    def __equal_odds(self, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities):
         df_train = self.df_x_train.copy()
         df_train["Is Privileged"] = df_train.apply(self.privilege_function, axis=1)
         
@@ -402,8 +518,8 @@ class Bias_Framework:
             privileged_classes=[[1]]
         )
         
-        reject_option_classification = RejectOptionClassification([{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
-        reject_option_classification.fit(df_train_true, df_train_predictions)
+        calibrated_equal_odds = EqOddsPostprocessing([{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
+        calibrated_equal_odds.fit(training_dataset_true, training_dataset_predictions)
         
         df_validate = self.df_x_validate.copy()
         df_validate["Is Privileged"] = df_validate.apply(self.privilege_function, axis=1)
@@ -418,10 +534,7 @@ class Bias_Framework:
             privileged_classes=[[1]]
         )
         
-        predicted_values = reject_option_classification.predict(validation_dataset).labels.ravel()
+        predicted_values = calibrated_equal_odds.predict(validation_dataset).labels.ravel()
         true_values = self.df_y_validate.to_numpy()
         
-        self.__metrics_by_debiasing_technique["reject option classification"] = bootstrap_error_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)        
-    
-    
-        
+        self.__metrics_by_debiasing_technique["equal odds"] = bootstrap_all_metrics(self.df_x_validate, true_values, predicted_values, self.privilege_function)

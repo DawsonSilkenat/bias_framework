@@ -19,16 +19,16 @@ def get_error_metrics(y_true_value: np.array, y_predicted_value: np.array) -> di
     # These metrics were selected due to their use in the Bias Mitigation Methods paper. There exist more we could include, but not a priority at this stage
     metrics = dict()
     metrics["accuracy"]                         = accuracy_score(y_true_value, y_predicted_value)
-    metrics["recall positive class"]            = recall_score(y_true_value, y_predicted_value, pos_label=1)
-    metrics["recall negative class"]            = recall_score(y_true_value, y_predicted_value, pos_label=0)
-    metrics["recall macro average"]             = recall_score(y_true_value, y_predicted_value, average="macro")
-    metrics["precision positive class"]         = precision_score(y_true_value, y_predicted_value, pos_label=1)
-    metrics["precision negative class"]         = precision_score(y_true_value, y_predicted_value, pos_label=0)
-    metrics["precision macro average"]          = precision_score(y_true_value, y_predicted_value, average="macro")
-    metrics["f1 score positive class"]          = f1_score(y_true_value, y_predicted_value, pos_label=1)
-    metrics["f1 score negative class"]          = f1_score(y_true_value, y_predicted_value, pos_label=0)
-    metrics["f1 score macro average"]           = f1_score(y_true_value, y_predicted_value, average="macro")
-    metrics["Matthews correlation coefficient"] = matthews_corrcoef(y_true_value, y_predicted_value)
+    metrics["recall positive class"]            = recall_score(y_true_value, y_predicted_value, pos_label=1, zero_division=0.0)
+    metrics["recall negative class"]            = recall_score(y_true_value, y_predicted_value, pos_label=0, zero_division=0.0)
+    metrics["recall macro average"]             = recall_score(y_true_value, y_predicted_value, average="macro", zero_division=0.0)
+    metrics["precision positive class"]         = precision_score(y_true_value, y_predicted_value, pos_label=1, zero_division=0.0)
+    metrics["precision negative class"]         = precision_score(y_true_value, y_predicted_value, pos_label=0, zero_division=0.0)
+    metrics["precision macro average"]          = precision_score(y_true_value, y_predicted_value, average="macro", zero_division=0.0)
+    metrics["f1 score positive class"]          = f1_score(y_true_value, y_predicted_value, pos_label=1, zero_division=0.0)
+    metrics["f1 score negative class"]          = f1_score(y_true_value, y_predicted_value, pos_label=0, zero_division=0.0)
+    metrics["f1 score macro average"]           = f1_score(y_true_value, y_predicted_value, average="macro", zero_division=0.0)
+    metrics["Matthews correlation coefficient"] = abs(matthews_corrcoef(y_true_value, y_predicted_value))
 
     return metrics
 
@@ -79,7 +79,7 @@ def get_all_metrics(df_validation: pd.DataFrame, true_values: np.array, predicte
     }
     
     
-def bootstrap_error_metrics(df_validation: pd.DataFrame, true_values: np.array, predicted_values: np.array, privilege_function: callable, repetitions: int = 100, seed=None) -> dict[str, dict[str, dict[str, float]]]:
+def bootstrap_all_metrics(df_validation: pd.DataFrame, true_values: np.array, predicted_values: np.array, privilege_function: callable, repetitions: int = 100, seed=None) -> dict[str, dict[str, dict[str, float]]]:
     
     rng = None
     # Set the random number generator for reproduceable results
@@ -105,7 +105,7 @@ def bootstrap_error_metrics(df_validation: pd.DataFrame, true_values: np.array, 
             metric_stats[metric_type][metric_name] = {
                 "value": value,
                 "standard deviation": std,
-                "confidence interval": scipy.stats.norm.interval(0.95, loc=value, scale=std), #/ (repetitions ** 0.5)
+                "confidence interval": scipy.stats.norm.interval(0.95, loc=value, scale=std), 
                 "skew": scipy.stats.skew(metric_results),
                 "kurtosis": scipy.stats.kurtosis(metric_results),
                 "quartiles": np.percentile(metric_results, [0, 25, 50, 75, 100]) 
