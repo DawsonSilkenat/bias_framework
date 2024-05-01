@@ -1,2 +1,2 @@
-from metrics import *
-from bias_framework import *
+from .metrics import *
+from .bias_framework import *

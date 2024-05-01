@@ -33,15 +33,19 @@ def get_error_metrics(y_true_value: np.array, y_predicted_value: np.array) -> di
     return metrics
 
 
-def get_fairness_metrics(df_validation: pd.DataFrame, true_values: np.array, predicted_values: np.array, privilege_function: callable) -> dict[str, float]:    
-    df_validation = df_validation.copy()
-    df_validation["Is Privileged"] = df_validation.apply(privilege_function, axis=1)
+def get_fairness_metrics(true_values: np.array, predicted_values: np.array, privilege_status: np.array) -> dict[str, float]:    
     
-    df_dataset_with_true_class = df_validation.copy()
-    df_dataset_with_true_class["Class Label"] = true_values
     
-    df_dataset_with_predicted_class = df_validation.copy()
-    df_dataset_with_predicted_class["Class Label"] = predicted_values
+    df_dataset_with_true_class = pd.DataFrame({
+        "Is Privileged" : privilege_status, 
+        "Class Label" : true_values
+    })
+    
+    df_dataset_with_predicted_class = pd.DataFrame({
+        "Is Privileged" : privilege_status, 
+        "Class Label" : predicted_values
+    })
+    
     
     # I don't believe the values of protected_attribute_names and privileged_classes matter here since this is really set in ClassificationMetric, however these are required fields so might as well set them reasonably. 
     dataset_with_true_class = StandardDataset(
@@ -72,14 +76,14 @@ def get_fairness_metrics(df_validation: pd.DataFrame, true_values: np.array, pre
     return metrics
 
 
-def get_all_metrics(df_validation: pd.DataFrame, true_values: np.array, predicted_values: np.array, privilege_function: callable) -> dict[str, dict[str, float]]:
+def get_all_metrics(true_values: np.array, predicted_values: np.array, privilege_status: np.array) -> dict[str, dict[str, float]]:
     return {
-        "fairness" : get_fairness_metrics(df_validation, true_values, predicted_values, privilege_function),
+        "fairness" : get_fairness_metrics(true_values, predicted_values, privilege_status),
         "error" : get_error_metrics(true_values, predicted_values)
     }
     
     
-def bootstrap_all_metrics(df_validation: pd.DataFrame, true_values: np.array, predicted_values: np.array, privilege_function: callable, repetitions: int = 100, seed=None) -> dict[str, dict[str, dict[str, float]]]:
+def bootstrap_all_metrics(true_values: np.array, predicted_values: np.array, privilege_status: np.array, repetitions: int = 100, seed=None) -> dict[str, dict[str, dict[str, float]]]:
     
     rng = None
     # Set the random number generator for reproduceable results
@@ -89,8 +93,8 @@ def bootstrap_all_metrics(df_validation: pd.DataFrame, true_values: np.array, pr
     # Record the result of each repetition 
     bootstrapped_metrics = []
     for _ in range(repetitions):
-        df_validation_boot, true_values_boot, predicted_values_boot = resample(df_validation, true_values, predicted_values, random_state=rng)
-        bootstrapped_metrics.append(get_all_metrics(df_validation_boot, true_values_boot, predicted_values_boot, privilege_function))
+        true_values_boot, predicted_values_boot, privilege_status_boot = resample(true_values, predicted_values, privilege_status, random_state=rng)
+        bootstrapped_metrics.append(get_all_metrics(true_values_boot, predicted_values_boot, privilege_status_boot))
     
     # Create the dictionary to return containing the calculated statistics about each metric
     metric_stats = dict()
@@ -114,7 +118,7 @@ def bootstrap_all_metrics(df_validation: pd.DataFrame, true_values: np.array, pr
     return metric_stats   
 
   
-def fairea_model_mutation(df_validation: pd.DataFrame, true_values: np.array, predicted_values: np.array, privilege_function: callable, fractions_to_mutate: list[float] = [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1], repetitions=50) -> list[tuple[float, dict[str, dict[str, float]]]]:
+def fairea_model_mutation(true_values: np.array, predicted_values: np.array, privilege_status: np.array, fractions_to_mutate: list[float] = [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1], repetitions=50) -> list[tuple[float, dict[str, dict[str, float]]]]:
     # Source: https://solar.cs.ucl.ac.uk/pdf/hort2021fairea.pdf
     
     # The Fairea paper used the mutation strategy where all values were mutated to the same label, and the label to mutate to was the one which produced the highest accuracy with 100% mutation. We follow this suggestion.
@@ -134,7 +138,7 @@ def fairea_model_mutation(df_validation: pd.DataFrame, true_values: np.array, pr
             mutated_predictions = np.copy(predicted_values)
             mutated_predictions[indexes_to_mutate] = mutate_to_value
     
-            mutation_fraction_metrics.append(get_all_metrics(df_validation, true_values, mutated_predictions, privilege_function))
+            mutation_fraction_metrics.append(get_all_metrics(true_values, mutated_predictions, privilege_status))
         # Average the results across the iterations and append to the results
         mutation_fraction_metrics_averages = dict()
         for metric_type, metric_type_dict in mutation_fraction_metrics[0].items():
