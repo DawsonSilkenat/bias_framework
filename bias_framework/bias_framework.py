@@ -42,8 +42,9 @@ class Bias_Framework:
 
         self.df_x_train = df_x_train
         self.df_x_validation = df_x_validation
-        self.df_y_train = df_y_train
-        self.df_y_validation = df_y_validation
+        
+        self.y_train = df_y_train.to_numpy().ravel()
+        self.y_validation = df_y_validation.to_numpy().ravel()
         
         self.privilege_train = np.ones(len(df_x_train))
         self.privilege_validation = np.ones(len(df_y_train))
@@ -109,7 +110,7 @@ class Bias_Framework:
         # When this code is run we must assume the user has already asigned privilege. We can therefore apply the pre-processing step without losing information
         x_train = self.df_x_train
         if self.pre_processing:
-            x_train = self.pre_processing.fit_transform(x_train, self.df_y_train)
+            x_train = self.pre_processing.fit_transform(x_train, self.y_train)
         x_validation = self.df_x_validation
         if self.pre_processing:
             x_validation = self.pre_processing.transform(x_validation)
@@ -119,7 +120,7 @@ class Bias_Framework:
         print(f"{time.time() - start} seconds to run with no debiasing")
         
         start = time.time()
-        self.__fairea = fairea_model_mutation(self.df_y_validation.to_numpy(), validation_predicted_values, self.privilege_validation)
+        self.__fairea = fairea_model_mutation(self.y_validation, validation_predicted_values, self.privilege_validation)
         print(f"{time.time() - start} seconds to get fairea baseline")
          
         train_true_labels, train_predictions, validation_predictions, validation_to_predict = self.__get_aif360_datasets(x_train, x_validation, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities)
@@ -165,7 +166,7 @@ class Bias_Framework:
         df_train["Is Privileged"] = self.privilege_train
         
         df_train_true_labels = df_train.copy()
-        df_train_true_labels["Class Label"] = self.df_y_train.to_numpy()
+        df_train_true_labels["Class Label"] = self.y_train
         
         train_true_labels = StandardDataset(
             df_train_true_labels, 
@@ -346,7 +347,7 @@ class Bias_Framework:
     
     
     def __no_debiasing(self, x_train, x_validation):
-        self.model.fit(x_train, self.df_y_train)
+        self.model.fit(x_train, self.y_train)
         
         training_predicted_values = self.model.predict(x_train)
         training_probabilities = self.model.predict_proba(x_train)[:, 1]
@@ -354,7 +355,7 @@ class Bias_Framework:
         validation_predicted_values = self.model.predict(x_validation)
         validation_probabilities = self.model.predict_proba(x_validation)[:, 1]
         
-        self.__metrics_by_debiasing_technique["no debiasing"] = bootstrap_all_metrics(self.df_y_validation.to_numpy(), validation_predicted_values, self.privilege_validation)
+        self.__metrics_by_debiasing_technique["no debiasing"] = bootstrap_all_metrics(self.y_validation, validation_predicted_values, self.privilege_validation)
         
         # Most debiasing analysis functions won't return anything, however having default results is needed for fairea and postprocessing debiasing 
         return training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities
@@ -373,8 +374,6 @@ class Bias_Framework:
         # More specifics:
         # This debiasing method involves creating a mapping from the input space to an intermediate representation, called a prototype, which is then what the ml model uses to classify. Finding this map from input to prototype involves solving an optimisation problem. This is done numerically, with randomly chosen initial values. For some values, it appears to produce absolutely terrible results
         
-        true_values = self.df_y_validation.to_numpy()
-        
         # Run the debiasing method with the given number of prototypes so we can start to understand how the parameter changes debiasing and what a good value might be. 
         for number_of_prototypes in [5, 10, 15]:
             print(f"fair representation with k = {number_of_prototypes}")
@@ -390,7 +389,7 @@ class Bias_Framework:
             classes = np.unique(transformed_data.labels.ravel())
             if len(classes) == 1:
                 # It is reasonable to assume that if only one class exists in the training data, it will be the only predicted value.
-                predicted_values = np.full(len(self.df_y_validation), classes[0])
+                predicted_values = np.full(len(self.y_validation), classes[0])
             else:
                 # Note that this debiasing methodology also seems to update the class labels. I'm not entirely clear on why, but does seem to get better results with the updated labels.
                 self.model.fit(transformed_data.features, transformed_data.labels.ravel())
@@ -401,7 +400,7 @@ class Bias_Framework:
                 
             
 
-            self.__metrics_by_debiasing_technique[f"learning fair representation with {number_of_prototypes} prototypes"] = bootstrap_all_metrics(true_values, predicted_values, self.privilege_validation)
+            self.__metrics_by_debiasing_technique[f"learning fair representation with {number_of_prototypes} prototypes"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)
 
 
     def __reweighing(self, train_true_labels, validation_to_predict):
@@ -415,9 +414,8 @@ class Bias_Framework:
         # Applying the required modifications to the validation data and getting results for metric calculation
         # Note that we don't need to apply reweighing because that only impacts the training stage
         predicted_values = self.model.predict(validation_to_predict.copy().features)
-        true_values = self.df_y_validation.to_numpy()
         
-        self.__metrics_by_debiasing_technique["reweighing"] = bootstrap_all_metrics(true_values, predicted_values, self.privilege_validation)
+        self.__metrics_by_debiasing_technique["reweighing"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)
         
     
     # def __disparate_impact_remover(self):
@@ -450,9 +448,8 @@ class Bias_Framework:
             
             validation_dataset = validation_predicted_values.copy()
             predicted_values = reject_option_classification.predict(validation_dataset).labels.ravel()
-            true_values = self.df_y_validation.to_numpy()
 
-            self.__metrics_by_debiasing_technique[f"reject option classification {metric_name.lower()} optimised"] = bootstrap_all_metrics(true_values, predicted_values, self.privilege_validation)        
+            self.__metrics_by_debiasing_technique[f"reject option classification {metric_name.lower()} optimised"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)        
 
 
     def __calibrated_equal_odds(self, train_true_labels, train_predictions, validation_predicted_values):
@@ -466,9 +463,8 @@ class Bias_Framework:
             
             validation_dataset = validation_predicted_values.copy()
             predicted_values = calibrated_equal_odds.predict(validation_dataset).labels.ravel()
-            true_values = self.df_y_validation.to_numpy()
             
-            self.__metrics_by_debiasing_technique[f"calibrated equal odds using {cost_contraint} cost"] = bootstrap_all_metrics(true_values, predicted_values, self.privilege_validation)          
+            self.__metrics_by_debiasing_technique[f"calibrated equal odds using {cost_contraint} cost"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)          
 
 
     def __equal_odds(self, train_true_labels, train_predictions, validation_predicted_values):
@@ -481,6 +477,5 @@ class Bias_Framework:
         
         validation_dataset = validation_predicted_values.copy()
         predicted_values = calibrated_equal_odds.predict(validation_dataset).labels.ravel()
-        true_values = self.df_y_validation.to_numpy()
         
-        self.__metrics_by_debiasing_technique["equal odds"] = bootstrap_all_metrics(true_values, predicted_values, self.privilege_validation)
+        self.__metrics_by_debiasing_technique["equal odds"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)
