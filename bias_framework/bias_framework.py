@@ -133,15 +133,15 @@ class Bias_Framework:
         print(f"{time.time() - start} seconds to run reweighing")
         
         start = time.time()
-        self.__reject_option_classification(train_true_labels, train_predictions, validation_predicted_values)
+        self.__reject_option_classification(train_true_labels, train_predictions, validation_to_predict)
         print(f"{time.time() - start} seconds to run reject option classification")
         
         start = time.time()
-        self.__calibrated_equal_odds(train_true_labels, train_predictions, validation_predicted_values)
+        self.__calibrated_equal_odds(train_true_labels, train_predictions, validation_to_predict)
         print(f"{time.time() - start} seconds to run calibrated equal odds")
         
         start = time.time()
-        self.__equal_odds(train_true_labels, train_predictions, validation_predicted_values)
+        self.__equal_odds(train_true_labels, train_predictions, validation_to_predict)
         print(f"{time.time() - start} seconds to run equal odds")
     
     
