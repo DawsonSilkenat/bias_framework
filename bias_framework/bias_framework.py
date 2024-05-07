@@ -21,14 +21,9 @@ import time
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-
-# Will have problems if the data is pasted before pre-processing, ie strings must be encoded as numbers before passed to the framework
-# Actually, this causes problems as well since pre-processing will likely be arrays and not dataframes
-# Can't modify the dataframe since the ml model might have preprocessing which depends on the dataframe structure or drops features
-
 # Could take the pre-processing, find the bias from the original dataframe, transform the data, add the bias information, then applying the debiasing methodology
 class Bias_Framework:
-    def __init__(self, model, df_x_train: pd.DataFrame, df_x_validation: pd.DataFrame, df_y_train: pd.DataFrame, df_y_validation: pd.DataFrame,pre_processing=None) -> None:
+    def __init__(self, model, df_x_train: pd.DataFrame, df_x_validation: pd.DataFrame, df_y_train: pd.DataFrame, df_y_validation: pd.DataFrame,pre_processing=None, **model_args) -> None:
         """Creates an instance of the bias framework applied to the specified model and data
 
         Args:
@@ -51,6 +46,7 @@ class Bias_Framework:
         
         self.pre_processing = pre_processing
         
+        self.__model_args = model_args
         self.__fairea = None
         self.__metrics_by_debiasing_technique = dict()
     
@@ -134,15 +130,15 @@ class Bias_Framework:
         print(f"{time.time() - start} seconds to run reweighing")
         
         start = time.time()
-        self.__reject_option_classification(train_true_labels, train_predictions, validation_to_predict)
+        self.__reject_option_classification(train_true_labels, train_predictions, validation_predictions)
         print(f"{time.time() - start} seconds to run reject option classification")
         
         start = time.time()
-        self.__calibrated_equal_odds(train_true_labels, train_predictions, validation_to_predict)
+        self.__calibrated_equal_odds(train_true_labels, train_predictions, validation_predictions)
         print(f"{time.time() - start} seconds to run calibrated equal odds")
         
         start = time.time()
-        self.__equal_odds(train_true_labels, train_predictions, validation_to_predict)
+        self.__equal_odds(train_true_labels, train_predictions, validation_predictions)
         print(f"{time.time() - start} seconds to run equal odds")
     
     
@@ -152,15 +148,14 @@ class Bias_Framework:
         if isinstance(x_train, pd.DataFrame):
             df_train = x_train
             df_validation = x_validation
+        elif sparse.issparse(x_train):
+            df_train = pd.DataFrame.sparse.from_spmatrix(x_train)
+            df_validation = pd.DataFrame.sparse.from_spmatrix(x_validation)
         elif isinstance(x_train, np.ndarray):
-            if sparse.issparse(x_train):
-                df_train = pd.DataFrame.sparse.from_spmatrix(x_train)
-                df_validation = pd.DataFrame.sparse.from_spmatrix(x_validation)
-            else:
-                df_train = pd.DataFrame(x_train)
-                df_validation = pd.DataFrame(x_validation)
+            df_train = pd.DataFrame(x_train)
+            df_validation = pd.DataFrame(x_validation)
         else:
-            raise RuntimeError("Pre-processing results in an unrecognised datatype. Please make sure runing pre-processing returns a pandas dataframe or a numpy array. If you have used no pre-processing, make sure your data is of the expected type")
+            raise RuntimeError(f"Pre-processing results in an unrecognised datatype. Please make sure runing pre-processing returns a pandas dataframe or a numpy array. If you have used no pre-processing, make sure your data is of the expected type\nEncountered type: {type(x_train)}")
         
         # Finish creating the datasets for training now that we know df_train is a pandas dataframe     
         df_train["Is Privileged"] = self.privilege_train
@@ -347,7 +342,7 @@ class Bias_Framework:
     
     
     def __no_debiasing(self, x_train, x_validation):
-        self.model.fit(x_train, self.y_train)
+        self.model.fit(x_train, self.y_train, **self.__model_args)
         
         training_predicted_values = self.model.predict(x_train)
         training_probabilities = self.model.predict_proba(x_train)[:, 1]
@@ -356,6 +351,7 @@ class Bias_Framework:
         validation_probabilities = self.model.predict_proba(x_validation)[:, 1]
         
         self.__metrics_by_debiasing_technique["no debiasing"] = bootstrap_all_metrics(self.y_validation, validation_predicted_values, self.privilege_validation)
+        self.__metrics_by_debiasing_technique["no debiasing"]["raw"] = validation_predicted_values
         
         # Most debiasing analysis functions won't return anything, however having default results is needed for fairea and postprocessing debiasing 
         return training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities
@@ -369,15 +365,12 @@ class Bias_Framework:
     
     
     def __learning_fair_representation(self, train_true_labels, validation_to_predict):
-        # TODO
-        # This method can product wildly different results. I should investigate how to make it more consistent.
-        # More specifics:
-        # This debiasing method involves creating a mapping from the input space to an intermediate representation, called a prototype, which is then what the ml model uses to classify. Finding this map from input to prototype involves solving an optimisation problem. This is done numerically, with randomly chosen initial values. For some values, it appears to produce absolutely terrible results
         
-        # Run the debiasing method with the given number of prototypes so we can start to understand how the parameter changes debiasing and what a good value might be. 
-        for number_of_prototypes in [5, 10, 15]:
+        # Only running one number_of_prototypes due to runtime. When ran with [5, 10] this took over an hour while other methods took minutes.
+        for number_of_prototypes in [5]:
             print(f"fair representation with k = {number_of_prototypes}")
-
+            start = time.time()
+            
             training_dataset = train_true_labels.copy()
 
             # Applying learning fair representation to the training data
@@ -392,15 +385,17 @@ class Bias_Framework:
                 predicted_values = np.full(len(self.y_validation), classes[0])
             else:
                 # Note that this debiasing methodology also seems to update the class labels. I'm not entirely clear on why, but does seem to get better results with the updated labels.
-                self.model.fit(transformed_data.features, transformed_data.labels.ravel())
+                self.model.fit(transformed_data.features, transformed_data.labels.ravel(), **self.__model_args)
 
                 validation_dataset = validation_to_predict.copy()
                 validation_dataset = fair_representation.transform(validation_dataset)
                 predicted_values = self.model.predict(validation_dataset.features)
-                
+            
+            print(f"fair representation with k = {number_of_prototypes} took {time.time() - start} seconds")
             
 
             self.__metrics_by_debiasing_technique[f"learning fair representation with {number_of_prototypes} prototypes"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)
+            self.__metrics_by_debiasing_technique[f"learning fair representation with {number_of_prototypes} prototypes"]["raw"] = predicted_values
 
 
     def __reweighing(self, train_true_labels, validation_to_predict):
@@ -409,32 +404,14 @@ class Bias_Framework:
         # Applying reweighing to the training data
         reweighing = Reweighing(unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
         transformed_data = reweighing.fit_transform(training_dataset)
-        self.model.fit(transformed_data.features, transformed_data.labels.ravel(), sample_weight=transformed_data.instance_weights)
+        self.model.fit(transformed_data.features, transformed_data.labels.ravel(), sample_weight=transformed_data.instance_weights, **self.__model_args)
         
         # Applying the required modifications to the validation data and getting results for metric calculation
         # Note that we don't need to apply reweighing because that only impacts the training stage
         predicted_values = self.model.predict(validation_to_predict.copy().features)
         
         self.__metrics_by_debiasing_technique["reweighing"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)
-        
-    
-    # def __disparate_impact_remover(self):
-        # Notes on ways we can get more out of each debiasing method, for those that have additional parameters we can set
-        # Adjust repair_level. Default is 1 (full), which the paper points out is likely to degrade classification accuracy. 
-        # Could include some partial values, say 0.5 and 0.75 to get a better idea how adjusting this may impact model performance?
-        
-        # Note: In the code for the paper from which this class largely sourced, the DisparateImpactRemover was applied to both the train and validation data. I don't really understand if this is correct, since 
-
-        # Not implemented yet since it might require removal of the protected fields, which is not something I can do at the moment
-        # from aif360.algorithms.preprocessing import DisparateImpactRemover
-        pass
-    
-    
-    # def __prejudice_remover(self):
-        # This implementation does not work with the framework and trying to figure out what it is actually doing is confusing
-        # Honestly, I find some of the code suspect. Remote execution of a python file rather than importing it
-        # from aif360.algorithms.inprocessing.prejudice_remover import PrejudiceRemover
-        pass
+        self.__metrics_by_debiasing_technique["reweighing"]["raw"] = predicted_values
     
     
     def __reject_option_classification(self, train_true_labels, train_predictions, validation_predicted_values):
@@ -449,7 +426,8 @@ class Bias_Framework:
             validation_dataset = validation_predicted_values.copy()
             predicted_values = reject_option_classification.predict(validation_dataset).labels.ravel()
 
-            self.__metrics_by_debiasing_technique[f"reject option classification {metric_name.lower()} optimised"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)        
+            self.__metrics_by_debiasing_technique[f"reject option classification {metric_name.lower()} optimised"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)     
+            self.__metrics_by_debiasing_technique[f"reject option classification {metric_name.lower()} optimised"]["raw"] = predicted_values   
 
 
     def __calibrated_equal_odds(self, train_true_labels, train_predictions, validation_predicted_values):
@@ -464,7 +442,8 @@ class Bias_Framework:
             validation_dataset = validation_predicted_values.copy()
             predicted_values = calibrated_equal_odds.predict(validation_dataset).labels.ravel()
             
-            self.__metrics_by_debiasing_technique[f"calibrated equal odds using {cost_contraint} cost"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)          
+            self.__metrics_by_debiasing_technique[f"calibrated equal odds using {cost_contraint} cost"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)  
+            self.__metrics_by_debiasing_technique[f"calibrated equal odds using {cost_contraint} cost"]["raw"] = predicted_values         
 
 
     def __equal_odds(self, train_true_labels, train_predictions, validation_predicted_values):
@@ -479,3 +458,4 @@ class Bias_Framework:
         predicted_values = calibrated_equal_odds.predict(validation_dataset).labels.ravel()
         
         self.__metrics_by_debiasing_technique["equal odds"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)
+        self.__metrics_by_debiasing_technique["equal odds"]["raw"] = predicted_values 
