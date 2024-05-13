@@ -6,12 +6,16 @@ from .baselines import Baseline
 
 class DebiasingGraphsObject:
     """This class is responsible for producing graphs related to debiasing. 
-    To do this, it stores the recorded metrics in a nested dictionary with format: debiasing technique name -> ['error', 'fairness'] -> metric name -> metric values.
-    A baseline curve to compare the effects of the debiasing against is also recorded using a purpose build class found the the baselines package.
-    Optionally, a name can be provided. This is most useful when adding two graphs together, so you can identify which results originated in each graph.
+    To do this, it stores the recorded metrics in a nested dictionary with format:
+        debiasing technique name -> ['error', 'fairness'] -> metric name -> metric values.
+    A baseline curve to compare the effects of the debiasing against is also recorded using a purpose build class found
+     the baselines package.
+    Optionally, a name can be provided. This is most useful when adding two graphs together, so you can identify which
+     results originated in each graph.
     """
     
-    def __init__(self, metrics_by_debiasing_technique: dict[str, dict[str, dict[str, float]]], baseline_curve: Baseline | list[Baseline], name: str = None) -> None:
+    def __init__(self, metrics_by_debiasing_technique: dict[str, dict[str, dict[str, float]]],
+                 baseline_curve: Baseline | list[Baseline], name: str = None) -> None:
         if not isinstance(baseline_curve, list):
             baseline_curve = [baseline_curve]
             
@@ -145,15 +149,18 @@ class DebiasingGraphsObject:
         self.get_all_subplots().show()
         
     
-    def __create_debias_methodology_point(self, debias_methodology: str, error_metric: str, fairness_metric: str, color: str, showlegend=True) -> go.Scatter:
-        """Returns a plotly scatterplot object for a single point: the results of debias_methodology as measured using error_metric and fairness_metric
+    def __create_debias_methodology_point(self, debias_methodology: str, error_metric: str, fairness_metric: str,
+                                          color: str, showlegend=True) -> go.Scatter:
+        """Returns a plotly scatterplot object for a single point: the results of debias_methodology as measured using
+        error_metric and fairness_metric
 
         Args:
             debias_methodology (str): Which of the available debias methodology this point represents
-            error_metric (str): Which metric is used to to measure error
-            fairness_metric (str): Which metric is used to to measure bias
+            error_metric (str): Which metric is used to measure error
+            fairness_metric (str): Which metric is used to measure bias
             color (str): Which color should be used to represent this point on a graph derived from the returned object
-            showlegend (bool, optional): If this point should be included on a legend in a resulting graph. Useful for subplots so that you don't end up with a repeating legend. Defaults to True.
+            showlegend (bool, optional): If this point should be included on a legend in a resulting graph. Useful for
+                subplots so that you don't end up with a repeating legend. Defaults to True.
 
         Returns:
             go.Scatter: The point to be placed on a graph
@@ -184,14 +191,17 @@ class DebiasingGraphsObject:
         return debias_result
     
     
-    def __create_scatter_with_baseline(self, error_metric: str, fairness_metric: str, debias_methodologies: list[str]=None, showlegend=True) -> list[go.Scatter]:
+    def __create_scatter_with_baseline(self, error_metric: str, fairness_metric: str, debias_methodologies: list[str]=None,
+                                       showlegend=True) -> list[go.Scatter]:
         """Create a scatterplot using the specified arguments, to be plotted on either an individual plot or with subplots
 
         Args:
-            error_metric (str): Which metric is used to to measure error
-            fairness_metric (str): Which metric is used to to measure bias
-            debias_methodologies (list[str], optional): Which debias methodologies should be included on the resulting plot. Defaults to all available in the dictionary except "no debiasing".
-            showlegend (bool, optional): If this plot should be included on a legend in a resulting graph. Useful for subplots so that you don't end up with a repeating legend. Defaults to True.
+            error_metric (str): Which metric is used to measure error
+            fairness_metric (str): Which metric is used to measure bias
+            debias_methodologies (list[str], optional): Which debias methodologies should be included on the resulting plot.
+                Defaults to all available in the dictionary except "no debiasing".
+            showlegend (bool, optional): If this plot should be included on a legend in a resulting graph.
+                Useful for subplots so that you don't end up with a repeating legend. Defaults to True.
 
         Returns:
             list[go.Scatter]: The list of components to be added to a plotly figure or subplot in order to produce the described graph.
@@ -212,7 +222,8 @@ class DebiasingGraphsObject:
             baseline_curves.append(baseline_curve.get_baseline_curve(error_metric, fairness_metric, colors[0], showlegend))
             colors = colors[1:]
         
-        scatter_plots = [self.__create_debias_methodology_point(method, error_metric, fairness_metric, color=color, showlegend=showlegend) for method, color in zip(debias_methodologies, colors)]
+        scatter_plots = [self.__create_debias_methodology_point(method, error_metric, fairness_metric, color=color, showlegend=showlegend)
+                         for method, color in zip(debias_methodologies, colors)]
         return [*scatter_plots, *baseline_curves]
     
     
