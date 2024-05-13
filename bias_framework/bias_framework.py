@@ -18,16 +18,20 @@ import time
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-# Could take the pre-processing, find the bias from the original dataframe, transform the data, add the bias information, then applying the debiasing methodology
+
 class Bias_Framework:
     def __init__(self, model, df_x_train: pd.DataFrame, df_x_validation: pd.DataFrame, df_y_train: pd.DataFrame, df_y_validation: pd.DataFrame,pre_processing=None, **model_args) -> None:
         """Creates an instance of the bias framework applied to the specified model and data
 
         Args:
             model: The ML model to which the bias framework will be applied. This model must have a fit method and predict method. I am assuming at the moment that this will be an sklearn ml model, might try to modify this to be more flexible later.
-            training_data: The data for training the ML model. It is assumed that the last column is the target variable.
-            validation_data: The data for which fairness metrics. It is assumed that the columns are the same as training_data.
+            df_x_train (pd.DataFrame): The training data features for the ML model
+            df_x_validation (pd.DataFrame): The validation data features for the ML model
+            df_y_train (pd.DataFrame): The training data labels for the ML model
+            df_y_validation (pd.DataFrame): The validation data labels for the ML model
+            pre_processing (optional): Any pre-processing to apply to the data before use by the ml model. Expected to implement methods for fit_transform and transform.
         """
+
         
         # Not all models implement a function for prediction probability. Probabilities are required for some postprocessing debiasing. The CalibratedClassifierCV method preforms probability calibration, which also adds this functionality if it is not part of the model
         # TODO create class which defines the required interface, remove this line of code and place responsibility on user to satisfy interface
