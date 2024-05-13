@@ -5,10 +5,13 @@ import plotly.graph_objs as go
 
 
 class FaireaCurve(Baseline):
-    """The fairea curve is a baseline to which debiasing techniques can be compared. By converting a percentage of the models results before debiasing is applied to the most frequent class we get a naive result for the error bias tradeoff. By using a range of percentages we produce a curve to which debiasing techniques can be compared
+    """The fairea curve is a baseline to which debiasing techniques can be compared. By converting a percentage of the
+    models results before debiasing is applied to the most frequent class we get a naive result for the error bias tradeoff.
+    By using a range of percentages we produce a curve to which debiasing techniques can be compared
     """
     
-    def __init__(self, true_values: np.array, predicted_values: np.array, privilege_status: np.array, fractions_to_mutate: list[float] = [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1], repetitions: int = 50) -> None:
+    def __init__(self, true_values: np.array, predicted_values: np.array, privilege_status: np.array,
+                 fractions_to_mutate: list[float] = [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1], repetitions: int = 50) -> None:
         super().__init__()
         self.metrics_by_mutation = _fairea_model_mutation(true_values, predicted_values, privilege_status, fractions_to_mutate, repetitions)
     
@@ -47,10 +50,13 @@ class FaireaCurve(Baseline):
         )
         
        
-def _fairea_model_mutation(true_values: np.array, predicted_values: np.array, privilege_status: np.array, fractions_to_mutate: list[float], repetitions: int) -> list[tuple[float, dict[str, dict[str, float]]]]:
+def _fairea_model_mutation(true_values: np.array, predicted_values: np.array, privilege_status: np.array,
+                           fractions_to_mutate: list[float], repetitions: int) -> list[tuple[float, dict[str, dict[str, float]]]]:
     # Source: https://solar.cs.ucl.ac.uk/pdf/hort2021fairea.pdf
 
-    # The Fairea paper used the mutation strategy where all values were mutated to the same label, and the label to mutate to was the one which produced the highest accuracy with 100% mutation. We follow this suggestion.
+    # The Fairea paper used the mutation strategy where all values were mutated to the same label,
+    # and the label to mutate to was the one which produced the highest accuracy with 100% mutation.
+    # We follow this suggestion.
     mutate_to_value = np.argmax(np.bincount(true_values))
 
     # This internal representation of the curve will have format list[tuple[float, dict[str, dict[str, float]]]]
@@ -77,7 +83,8 @@ def _fairea_model_mutation(true_values: np.array, predicted_values: np.array, pr
             mutation_fraction_metrics_averages[metric_type] = dict()
 
             for metric_name in metric_type_dict.keys():
-                mutation_fraction_metrics_averages[metric_type][metric_name] = np.mean([metric[metric_type][metric_name] for metric in mutation_fraction_metrics])
+                mutation_fraction_metrics_averages[metric_type][metric_name] = np.mean(
+                    [metric[metric_type][metric_name] for metric in mutation_fraction_metrics])
 
         metrics_by_mutation.append((mutation_fraction, mutation_fraction_metrics_averages)) 
             
