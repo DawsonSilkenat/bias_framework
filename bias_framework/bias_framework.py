@@ -192,6 +192,7 @@ class Bias_Framework:
                               validation_predicted_values, validation_probabilities):
         # To avoid recomputing for each debiasing methodology we create the aif360.datasets and pass them to each function
         # aif360.datasets take a dataframe argument, so make sure this is the type for both x_train and x_validation
+        # TODO: type parameters for arguments x_train and x_valiadtion as they must be dataframes
         if isinstance(x_train, pd.DataFrame):
             df_train = x_train
             df_validation = x_validation
