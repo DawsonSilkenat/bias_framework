@@ -196,8 +196,8 @@ class DebiasingGraphsObject:
         """Create a scatterplot using the specified arguments, to be plotted on either an individual plot or with subplots
 
         Args:
-            error_metric (str): Which metric is used to to measure error
-            fairness_metric (str): Which metric is used to to measure bias
+            error_metric (str): Which metric is used to measure error
+            fairness_metric (str): Which metric is used to measure bias
             debias_methodologies (list[str], optional): Which debias methodologies should be included on the resulting plot.
                 Defaults to all available in the dictionary except "no debiasing".
             showlegend (bool, optional): If this plot should be included on a legend in a resulting graph.
