@@ -255,14 +255,14 @@ class DebiasingGraphsComposition:
                 i = 1
                 updated_key = key
                 while updated_key in metrics_by_debiasing_technique.keys():
-                    updated_key = key + str(i)
+                    updated_key = key + " " + str(i)
                     i += 1
                 
                 metrics_by_debiasing_technique[updated_key] = value
             
             baselines.extend(graph_object.baseline_curve)
             
-        self.composite_debias_graph = DebiasingGraphsObject(baselines, metrics_by_debiasing_technique)
+        self.composite_debias_graph = DebiasingGraphsObject(metrics_by_debiasing_technique, baselines)
     
     
     def __getattr__(self, attr):
