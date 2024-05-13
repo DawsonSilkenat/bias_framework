@@ -2,3 +2,6 @@ adult/*
 __pycache__/*
 *.pyc
 *.png
+settings.json
+.DS_Store
+presentation_prep.ipynb

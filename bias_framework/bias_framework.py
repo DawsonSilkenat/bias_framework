@@ -1,9 +1,6 @@
 import pandas as pd
 import numpy as np
 from .metrics import *
-import plotly.graph_objs as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 from aif360.datasets import StandardDataset
 from aif360.algorithms.preprocessing import LFR, Reweighing
 from aif360.algorithms.postprocessing.reject_option_classification import RejectOptionClassification
@@ -11,8 +8,8 @@ from aif360.algorithms.postprocessing.calibrated_eq_odds_postprocessing import C
 from aif360.algorithms.postprocessing.eq_odds_postprocessing import EqOddsPostprocessing
 from sklearn.calibration import CalibratedClassifierCV
 from scipy import sparse
-
-# I quite like the idea of Discrimination aware Ensemble, but it doesn't work with arbitrary classifiers. Might be something to look into later
+from .debiasing_graphs import DebiasingGraphsObject
+from .baselines.fairea_curve import FaireaCurve
 
 # This is only for information on runtime rather than used functionally
 import time
@@ -27,12 +24,13 @@ class Bias_Framework:
         """Creates an instance of the bias framework applied to the specified model and data
 
         Args:
-            model: The ML model to which the bias framework will be applied. This model must have a fit method and predict method. I am assuming at the moment that this will be an sklearn ml model, might try to modify this to be more flexable later.
+            model: The ML model to which the bias framework will be applied. This model must have a fit method and predict method. I am assuming at the moment that this will be an sklearn ml model, might try to modify this to be more flexible later.
             training_data: The data for training the ML model. It is assumed that the last column is the target variable.
             validation_data: The data for which fairness metrics. It is assumed that the columns are the same as training_data.
         """
         
         # Not all models implement a function for prediction probability. Probabilities are required for some postprocessing debiasing. The CalibratedClassifierCV method preforms probability calibration, which also adds this functionality if it is not part of the model
+        # TODO create class which defines the required interface, remove this line of code and place responsibility on user to satisfy interface
         self.model = CalibratedClassifierCV(estimator=model)
 
         self.df_x_train = df_x_train
@@ -55,7 +53,7 @@ class Bias_Framework:
         """Update the function which determines if an element belongs to the privileged or unprivileged class
 
         Args:
-            function: A function which when applied to a row of a dataframe will return a 1 for privileged and 0 for unprivileged. True and false values should also work, but I am less certain of this. Requires testing.
+            function: A function which when applied to a row of a dataframe will return a 1 for privileged and 0 for unprivileged. True and false values should also work.
         """
         
         self.privilege_train = self.df_x_train.apply(privilege_function, axis=1).to_numpy()
@@ -102,8 +100,11 @@ class Bias_Framework:
         self.set_privilege_function(privilege_function)
     
     
-    def run_framework(self):
-        # When this code is run we must assume the user has already asigned privilege. We can therefore apply the pre-processing step without losing information
+    def run_framework(self):     
+        """Executes the framework using the model, data, and pre-processing provided at initialisation and the definition of privilege set using one of the provided methods. This will run through a number of debiasing methodologies and save the results. This may take some time. Once finished, you may either call one of the graph displaying methods of this class or the get_FaireaGraphsObject method to get an object which stores just the result and can be added to similar objects to combine the graphs.
+        """   
+        
+        # When this code is run we must assume the user has already assigned privilege. We can therefore apply the pre-processing step without losing information
         x_train = self.df_x_train
         if self.pre_processing:
             x_train = self.pre_processing.fit_transform(x_train, self.y_train)
@@ -116,13 +117,13 @@ class Bias_Framework:
         print(f"{time.time() - start} seconds to run with no debiasing")
         
         start = time.time()
-        self.__fairea = fairea_model_mutation(self.y_validation, validation_predicted_values, self.privilege_validation)
+        fairea_curve = FaireaCurve(self.y_validation, validation_predicted_values, self.privilege_validation)
         print(f"{time.time() - start} seconds to get fairea baseline")
          
         train_true_labels, train_predictions, validation_predictions, validation_to_predict = self.__get_aif360_datasets(x_train, x_validation, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities)
         
         start = time.time()
-        self.__learning_fair_representation(train_true_labels, validation_to_predict) 
+        # self.__learning_fair_representation(train_true_labels, validation_to_predict) 
         print(f"{time.time() - start} seconds to run learning fair representation")
         
         start = time.time()
@@ -130,7 +131,7 @@ class Bias_Framework:
         print(f"{time.time() - start} seconds to run reweighing")
         
         start = time.time()
-        self.__reject_option_classification(train_true_labels, train_predictions, validation_predictions)
+        # self.__reject_option_classification(train_true_labels, train_predictions, validation_predictions)
         print(f"{time.time() - start} seconds to run reject option classification")
         
         start = time.time()
@@ -140,8 +141,50 @@ class Bias_Framework:
         start = time.time()
         self.__equal_odds(train_true_labels, train_predictions, validation_predictions)
         print(f"{time.time() - start} seconds to run equal odds")
+        
+        self.__fairea = DebiasingGraphsObject(self.__metrics_by_debiasing_technique, fairea_curve)
+      
+        
+    def get_debias_methodologies(self) -> list[str]:
+        if self.__fairea is None:
+            return []
+        return self.__fairea.get_debias_methodologies()
     
     
+    def get_error_metric_names(self) -> list[str]:
+        if self.__fairea is None:
+            return []
+        return self.__fairea.get_error_metric_names()      
+     
+                 
+    def get_bias_metric_names(self) -> list[str]:
+        if self.__fairea is None:
+            return []
+        return self.__fairea.get_bias_metric_names()    
+    
+    
+    def get_raw_data(self) -> dict[str, dict[str, dict[str, float]]]:
+        if self.__fairea is None:
+            return dict()
+        return self.__fairea.get_raw_data()    
+    
+    
+    def get_FaireaGraphsObject(self) -> DebiasingGraphsObject:
+        return self.__fairea  
+    
+    
+    def show_fairea_graph(self, error_metric: str, fairness_metric: str) -> None:
+        self.__fairea.show_single_graph(error_metric, fairness_metric)
+    
+    
+    def show_many_fairea_graphs(self, error_metrics: list[str], fairness_metrics: list[str]) -> None:
+        self.__fairea.show_subplots(error_metrics, fairness_metrics)
+        
+    
+    def show_all_fairea_graphs(self) -> None:
+        self.__fairea.show_all_subplots()
+        
+        
     def __get_aif360_datasets(self, x_train, x_validation, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities):
         # To avoid recomputing for each debiasing methodology we create the aif360.datasets and pass them to each function
         # aif360.datasets take a dataframe argument, so make sure this is the type for both x_train and x_validation
@@ -155,7 +198,7 @@ class Bias_Framework:
             df_train = pd.DataFrame(x_train)
             df_validation = pd.DataFrame(x_validation)
         else:
-            raise RuntimeError(f"Pre-processing results in an unrecognised datatype. Please make sure runing pre-processing returns a pandas dataframe or a numpy array. If you have used no pre-processing, make sure your data is of the expected type\nEncountered type: {type(x_train)}")
+            raise RuntimeError(f"Pre-processing results in an unrecognised datatype. Please make sure running pre-processing returns a pandas dataframe or a numpy array. If you have used no pre-processing, make sure your data is of the expected type\nEncountered type: {type(x_train)}")
         
         # Finish creating the datasets for training now that we know df_train is a pandas dataframe     
         df_train["Is Privileged"] = self.privilege_train
@@ -213,132 +256,7 @@ class Bias_Framework:
             privileged_classes=[[1]]
         ) 
         
-        return train_true_labels, train_predictions, validation_predictions, validation_to_predict
-    
-    
-    def show_fairea_graph(self, error_metric: str, fairness_metric: str) -> None:
-        data = self.__create_scatter_with_fairea(error_metric, fairness_metric)
-        
-        layout = go.Layout(
-            xaxis_title=f"Bias ({fairness_metric})", 
-            yaxis_title=f"Error ({error_metric})"
-        )
-        
-        figure = go.Figure(data=data, layout=layout)
-        figure.update_layout(title=f"Debias Methodologies impact on {error_metric} and {fairness_metric}")
-        figure.update_xaxes(tick0=0, dtick=0.1) 
-        figure.update_yaxes(tick0=0, dtick=0.1)
-        figure.show() 
-    
-    
-    def show_many_fairea_graphs(self, error_metrics: list[str], fairness_metrics: list[str]) -> None:
-        if isinstance(error_metrics, str):
-            error_metrics = [error_metrics]
-        if isinstance(fairness_metrics, str):
-            fairness_metrics = [fairness_metrics]
-            
-        subplots = make_subplots(len(error_metrics), len(fairness_metrics))
-        
-        for row, error_metric in enumerate(error_metrics):
-            for col, fairness_metric in enumerate(fairness_metrics):
-                plots = self.__create_scatter_with_fairea(error_metric, fairness_metric, showlegend=(row==0 and col==0))
-                for plot in plots:
-                    # The subplots are 1 indexed, while enumerate is 0 index, hence the add 1
-                    subplots.add_trace(plot, row=row+1, col=col+1)
-                
-                subplots.update_xaxes(tick0=0, dtick=0.1, row=row+1, col=col+1) 
-                subplots.update_yaxes(tick0=0, dtick=0.1, row=row+1, col=col+1)
-                
-                if col == 0:
-                    subplots.update_yaxes(title_text=f"Error ({error_metric})", col=col+1, row=row+1)
-                if row == len(error_metrics) - 1:
-                    subplots.update_xaxes(title_text=f"Bias ({fairness_metric})", col=col+1, row=row+1)
-        
-        subplots.update_layout(height=800*len(fairness_metrics), width=200*len(error_metrics)) 
-        subplots.show()
-                    
-            
-    def show_all_fairea_graphs(self) -> None:
-        self.show_many_fairea_graphs(self.get_error_metric_names(), self.get_bias_metric_names()) 
-    
-    
-    def __create_debias_methodology_scatter(self, debias_methodology: str, error_metric: str, fairness_metric: str, color: str, showlegend=True) -> go.Scatter:
-        # Statistics regarding the debiasing technique to be plotted as a single point
-        debias_x = self.__metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["value"]
-        debias_y = self.__metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["value"]
-        
-        # Error bars to put on the single point
-        confidence_interval = self.__metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["confidence interval"]
-        error_bars_x = (confidence_interval[0] - confidence_interval[1]) / 2
-        
-        confidence_interval = self.__metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["confidence interval"]
-        error_bars_y = (confidence_interval[0] - confidence_interval[1]) / 2
-        
-        debias_result = go.Scatter(
-            x=[debias_x], 
-            error_x={"type": "data", "array": [error_bars_x]}, 
-            y=[debias_y], 
-            error_y={"type": "data", "array": [error_bars_y]}, 
-            mode="markers", 
-            name=f"{debias_methodology} outcome",
-            showlegend=showlegend,
-            marker_color=color
-        )
-        
-        return debias_result
-    
-    
-    def __create_scatter_with_fairea(self, error_metric: str, fairness_metric: str, debias_methodologies: list[str]=None, showlegend=True) -> list[go.Scatter]:
-        if debias_methodologies is None:
-            # If the debias_methodologies to be plotted are not specified, plot all but 'no debiasing' which will be covered by fairea
-            debias_methodologies = self.get_debias_methodologies()
-            debias_methodologies.remove("no debiasing")
-            
-        fairea_labels = []
-        fairea_x = []
-        fairea_y = []
-        
-        # Create the fairea curve 
-        for mutation, metric in self.__fairea:
-            fairea_labels.append(f"F_{int(mutation * 100)}")
-            fairea_x.append(metric["fairness"][fairness_metric])
-            fairea_y.append(metric["error"][error_metric])
-        
-        
-        colors = px.colors.qualitative.Dark24
-        
-        fairea_curve = go.Scatter(
-            x=fairea_x, 
-            y=fairea_y, 
-            mode="lines+markers+text", 
-            name="fairea baseline", 
-            text=fairea_labels, 
-            textposition="bottom right", 
-            showlegend=showlegend,
-            line_color=colors[0]
-        )
-        colors = colors[1:]
-        
-        scatter_plots = [self.__create_debias_methodology_scatter(method, error_metric, fairness_metric, color=color, showlegend=showlegend) for method, color in zip(debias_methodologies, colors)]
-        return [*scatter_plots, fairea_curve]
-    
-    
-    def get_debias_methodologies(self) -> list[str]:
-        return list(self.__metrics_by_debiasing_technique.keys())
-    
-    
-    def get_error_metric_names(self) -> list[str]:
-        some_debias = list(self.__metrics_by_debiasing_technique.keys())[0]
-        return list(self.__metrics_by_debiasing_technique[some_debias]["error"].keys())
-            
-                 
-    def get_bias_metric_names(self) -> list[str]:
-        some_debias = list(self.__metrics_by_debiasing_technique.keys())[0]
-        return list(self.__metrics_by_debiasing_technique[some_debias]["fairness"].keys())
-    
-    
-    def get_raw_data(self) -> list[str]:
-        return self.__metrics_by_debiasing_technique             
+        return train_true_labels, train_predictions, validation_predictions, validation_to_predict       
     
     
     def __no_debiasing(self, x_train, x_validation):
@@ -355,6 +273,7 @@ class Bias_Framework:
         
         # Most debiasing analysis functions won't return anything, however having default results is needed for fairea and postprocessing debiasing 
         return training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities
+   
         
     # def __optimized_preprocessing(self):
         # this looks like it requires more knowledge of the dataset than I expect this framework to know at this point in time, so leaving this unimplemented
@@ -365,12 +284,8 @@ class Bias_Framework:
     
     
     def __learning_fair_representation(self, train_true_labels, validation_to_predict):
-        
         # Only running one number_of_prototypes due to runtime. When ran with [5, 10] this took over an hour while other methods took minutes.
         for number_of_prototypes in [5]:
-            print(f"fair representation with k = {number_of_prototypes}")
-            start = time.time()
-            
             training_dataset = train_true_labels.copy()
 
             # Applying learning fair representation to the training data
@@ -378,7 +293,7 @@ class Bias_Framework:
             
             transformed_data = fair_representation.fit_transform(training_dataset)
             
-            # This debiasing methodology also mutates the labels. If there is a single label,the classifier may raise an exception, so this case must be handled seprately
+            # This debiasing methodology also mutates the labels. If there is a single label,the classifier may raise an exception, so this case must be handled separately
             classes = np.unique(transformed_data.labels.ravel())
             if len(classes) == 1:
                 # It is reasonable to assume that if only one class exists in the training data, it will be the only predicted value.
@@ -390,8 +305,6 @@ class Bias_Framework:
                 validation_dataset = validation_to_predict.copy()
                 validation_dataset = fair_representation.transform(validation_dataset)
                 predicted_values = self.model.predict(validation_dataset.features)
-            
-            print(f"fair representation with k = {number_of_prototypes} took {time.time() - start} seconds")
             
 
             self.__metrics_by_debiasing_technique[f"learning fair representation with {number_of_prototypes} prototypes"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)
@@ -415,7 +328,7 @@ class Bias_Framework:
     
     
     def __reject_option_classification(self, train_true_labels, train_predictions, validation_predicted_values):
-        # We want results for optimising with respect to each of the bias metrics, as it is unclear what the tradeoff will be
+        # We want results for optimising with respect to each of the bias metrics, as it is unclear what the trade off will be
         for metric_name in ["Statistical parity difference", "Average odds difference", "Equal opportunity difference"]:
             training_dataset_true = train_true_labels.copy()
             training_dataset_predictions = train_predictions.copy()
@@ -431,23 +344,22 @@ class Bias_Framework:
 
 
     def __calibrated_equal_odds(self, train_true_labels, train_predictions, validation_predicted_values):
-        for cost_contraint in ["fpr", "fnr", "weighted"]:
+        for cost_constraint in ["fpr", "fnr", "weighted"]:
 
             training_dataset_true = train_true_labels.copy()
             training_dataset_predictions = train_predictions.copy()
             
-            calibrated_equal_odds = CalibratedEqOddsPostprocessing([{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}], cost_constraint=cost_contraint)
+            calibrated_equal_odds = CalibratedEqOddsPostprocessing([{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}], cost_constraint=cost_constraint)
             calibrated_equal_odds.fit(training_dataset_true, training_dataset_predictions)
             
             validation_dataset = validation_predicted_values.copy()
             predicted_values = calibrated_equal_odds.predict(validation_dataset).labels.ravel()
             
-            self.__metrics_by_debiasing_technique[f"calibrated equal odds using {cost_contraint} cost"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)  
-            self.__metrics_by_debiasing_technique[f"calibrated equal odds using {cost_contraint} cost"]["raw"] = predicted_values         
+            self.__metrics_by_debiasing_technique[f"calibrated equal odds using {cost_constraint} cost"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)  
+            self.__metrics_by_debiasing_technique[f"calibrated equal odds using {cost_constraint} cost"]["raw"] = predicted_values         
 
 
     def __equal_odds(self, train_true_labels, train_predictions, validation_predicted_values):
-
         training_dataset_true = train_true_labels.copy()
         training_dataset_predictions = train_predictions.copy()
         
@@ -459,3 +371,4 @@ class Bias_Framework:
         
         self.__metrics_by_debiasing_technique["equal odds"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)
         self.__metrics_by_debiasing_technique["equal odds"]["raw"] = predicted_values 
+        
