@@ -127,7 +127,7 @@ class Bias_Framework:
         train_true_labels, train_predictions, validation_predictions, validation_to_predict = self.__get_aif360_datasets(x_train, x_validation, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities)
         
         start = time.time()
-        # self.__learning_fair_representation(train_true_labels, validation_to_predict) 
+        self.__learning_fair_representation(train_true_labels, validation_to_predict) 
         print(f"{time.time() - start} seconds to run learning fair representation")
         
         start = time.time()
@@ -135,7 +135,7 @@ class Bias_Framework:
         print(f"{time.time() - start} seconds to run reweighing")
         
         start = time.time()
-        # self.__reject_option_classification(train_true_labels, train_predictions, validation_predictions)
+        self.__reject_option_classification(train_true_labels, train_predictions, validation_predictions)
         print(f"{time.time() - start} seconds to run reject option classification")
         
         start = time.time()
