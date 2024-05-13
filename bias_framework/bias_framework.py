@@ -235,8 +235,8 @@ class Bias_Framework:
             privileged_classes=[[1]]
         )
 
-        # Similarly compute the datasets for the validation set. Note that we don't really need the true labels in
-        # any of these datasets
+        # Similarly compute the datasets for the validation set.
+        # Note that we don't really need the true labels in any of these datasets
         df_validation["Is Privileged"] = self.privilege_validation
 
         df_validation_predictions = df_validation.copy()
