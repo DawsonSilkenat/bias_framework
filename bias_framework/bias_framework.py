@@ -111,6 +111,7 @@ class Bias_Framework:
             Once finished, you may either call one of the graph displaying methods of this class or the get_FaireaGraphsObject method
             to get an object which stores just the result and can be added to similar objects to combine the graphs.
         """
+        # TODO: add ability to specify which debiasing methodologies to run
 
         # When this code is run we must assume the user has already assigned privilege. We can therefore apply the pre-processing step without losing information
         x_train = self.df_x_train
