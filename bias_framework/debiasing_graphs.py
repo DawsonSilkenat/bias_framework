@@ -17,7 +17,7 @@ class DebiasingGraphsObject:
             
         self.baseline_curve = baseline_curve
         self.metrics_by_debiasing_technique = metrics_by_debiasing_technique 
-        self.name = name
+        self.set_name(name)
 
 
     def get_debias_methodologies(self) -> list[str]:
@@ -51,7 +51,7 @@ class DebiasingGraphsObject:
         """Updates the recorded name, important for combining graphs so you can identify the origin of the plots"""
         self.name = name 
         if len(self.baseline_curve) == 1:
-            self.baseline_curve.name = name
+            self.baseline_curve[0].name = name
         
     
     def get_single_graph(self, error_metric: str, fairness_metric: str) -> go.Figure:
@@ -223,7 +223,7 @@ class DebiasingGraphsObject:
     
     
 class DebiasingGraphsComposition:
-    """Wrapper around DebiasingGraphsObject to make it easier to combine plots without losing information about the origin of the information
+    """Wrapper around DebiasingGraphsObject to make it easier to combine plots without losing information 
     """
     
     def __init__(self, *debiasing_graphs: DebiasingGraphsObject) -> None:
