@@ -8,7 +8,7 @@ class FaireaCurve(Baseline):
     """The fairea curve is a baseline to which debiasing techniques can be compared. By converting a percentage of the models results before debiasing is applied to the most frequent class we get a naive result for the error bias tradeoff. By using a range of percentages we produce a curve to which debiasing techniques can be compared
     """
     
-    def __init__(self, true_values: np.array, predicted_values: np.array, privilege_status: np.array, fractions_to_mutate: list[float] = [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1], repetitions: int = 50) -> None:
+    def __init__(self, true_values: np.array, predicted_values: np.array, privilege_status: np.array, fractions_to_mutate: list[float] = [i/10 for i in range(11)], repetitions: int = 50) -> None:
         super().__init__()
         self.metrics_by_mutation = _fairea_model_mutation(true_values, predicted_values, privilege_status, fractions_to_mutate, repetitions)
     

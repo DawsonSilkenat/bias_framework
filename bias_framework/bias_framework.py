@@ -25,10 +25,10 @@ class Bias_Framework:
 
         Args:
             model: The ML model to which the bias framework will be applied. This model must have a fit method and predict method. I am assuming at the moment that this will be an sklearn ml model, might try to modify this to be more flexible later.
-            df_x_train (pd.DataFrame): The training data features for the ML model
-            df_x_validation (pd.DataFrame): The validation data features for the ML model
-            df_y_train (pd.DataFrame): The training data labels for the ML model
-            df_y_validation (pd.DataFrame): The validation data labels for the ML model
+            df_x_train (pd.DataFrame): The training data features for the ML model.
+            df_x_validation (pd.DataFrame): The validation data features for the ML model.
+            df_y_train (pd.DataFrame): The training data labels for the ML model.
+            df_y_validation (pd.DataFrame): The validation data labels for the ML model.
             pre_processing (optional): Any pre-processing to apply to the data before use by the ml model. Expected to implement methods for fit_transform and transform.
         """
 
@@ -57,7 +57,7 @@ class Bias_Framework:
         """Update the function which determines if an element belongs to the privileged or unprivileged class
 
         Args:
-            function: A function which when applied to a row of a dataframe will return a 1 for privileged and 0 for unprivileged. True and false values should also work.
+            privilege_function (callable): A function which when applied to a row of a dataframe will return a 1 for privileged and 0 for unprivileged. True and false values should also work.
         """
         
         self.privilege_train = self.df_x_train.apply(privilege_function, axis=1).to_numpy()
@@ -190,6 +190,9 @@ class Bias_Framework:
         
         
     def __get_aif360_datasets(self, x_train, x_validation, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities):
+        """We are using debiasing methods implemented in the aif360 library. These require aif360.datasets arguments, so we covert our dataframes to this form. 
+        """
+        
         # To avoid recomputing for each debiasing methodology we create the aif360.datasets and pass them to each function
         # aif360.datasets take a dataframe argument, so make sure this is the type for both x_train and x_validation
         if isinstance(x_train, pd.DataFrame):

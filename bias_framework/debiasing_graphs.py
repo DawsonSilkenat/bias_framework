@@ -150,8 +150,8 @@ class DebiasingGraphsObject:
 
         Args:
             debias_methodology (str): Which of the available debias methodology this point represents
-            error_metric (str): Which metric is used to to measure error
-            fairness_metric (str): Which metric is used to to measure bias
+            error_metric (str): Which metric is used to measure error
+            fairness_metric (str): Which metric is used to measure bias
             color (str): Which color should be used to represent this point on a graph derived from the returned object
             showlegend (bool, optional): If this point should be included on a legend in a resulting graph. Useful for subplots so that you don't end up with a repeating legend. Defaults to True.
 
@@ -188,8 +188,8 @@ class DebiasingGraphsObject:
         """Create a scatterplot using the specified arguments, to be plotted on either an individual plot or with subplots
 
         Args:
-            error_metric (str): Which metric is used to to measure error
-            fairness_metric (str): Which metric is used to to measure bias
+            error_metric (str): Which metric is used to measure error
+            fairness_metric (str): Which metric is used to measure bias
             debias_methodologies (list[str], optional): Which debias methodologies should be included on the resulting plot. Defaults to all available in the dictionary except "no debiasing".
             showlegend (bool, optional): If this plot should be included on a legend in a resulting graph. Useful for subplots so that you don't end up with a repeating legend. Defaults to True.
 
