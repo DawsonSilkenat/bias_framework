@@ -42,7 +42,7 @@ class DebiasingGraphsObject:
     
     
     def get_raw_data(self) -> dict[str, dict[str, dict[str, float]]]:
-        """Returns: The full dictionary of recorded metrics by debiasing techniques
+        """Returns: The full dictionary of recorded metrics by debiasing techniques. This has format: debiasing technique name -> ['error', 'fairness'] -> metric name -> metric values
         """
         return self.metrics_by_debiasing_technique  
     
@@ -121,7 +121,7 @@ class DebiasingGraphsObject:
                 if row == len(error_metrics) - 1:
                     subplots.update_xaxes(title_text=f"Bias ({fairness_metric})", col=col+1, row=row+1)
         
-        subplots.update_layout(height=800*len(fairness_metrics), width=200*len(error_metrics)) 
+        subplots.update_layout(hight=200*len(error_metrics), width=800*len(fairness_metrics)) 
         return subplots
         
     
@@ -201,9 +201,10 @@ class DebiasingGraphsObject:
         colors = px.colors.qualitative.Dark24 + px.colors.qualitative.Light24
         
         if debias_methodologies is None:
-            # If the debias_methodologies to be plotted are not specified, plot all but 'no debiasing' 
             debias_methodologies = self.get_debias_methodologies()
-            debias_methodologies.remove("no debiasing")
+            # TODO do I want to skip 'no debiasing'? Loses error measurement and makes combining graphs more difficult
+            # If the debias_methodologies to be plotted are not specified, plot all but 'no debiasing' 
+            # debias_methodologies.remove("no debiasing")
         elif isinstance(debias_methodologies, str):
             debias_methodologies = [debias_methodologies]
 

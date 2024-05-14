@@ -16,6 +16,8 @@ Note that the output of this framework purely visual. While it is possible to as
     - [set_privilege_function](#set_privilege_function)
     - [set_privileged_combinations](#set_privileged_combinations)
     - [run_framework](#run_framework)
+    - [get_DebiasingGraphsObject](#get_debiasinggraphsobject)
+    - [Getters and graphs](#getters-and-graphs)
 - [Debiasing Graphs](#debiasing-graphs)
     - [Debiasing Graphs Object](#debiasing-graphs-object)
     - [Debiasing Graphs Composition](#debiasing-graphs-composition)
@@ -87,21 +89,25 @@ The second dictionary indicates that if sex has value 0 then the individual belo
 
 ### run_framework
 
-Executes the framework using the model, data, and pre-processing provided at initialisation and the definition of privilege set using one of the provided methods. This will run through a number of debiasing methodologies and save the results. This may take some time. Once finished, you may either call one of the graph displaying methods of this class or the get_FaireaGraphsObject method to get an object which stores just the result and can be added to similar objects to combine the graphs.
+Executes the framework using the model, data, and pre-processing provided at initialisation and the definition of privilege set using one of the provided methods. This will run through a number of debiasing methodologies and save the results. This may take some time. Once finished, you may either call one of the graph displaying methods of this class or the get_DebiasingGraphsObject method to get an object which stores just the result and can be added to similar objects to combine the graphs.
 
 
-### get_FaireaGraphsObject
+### get_DebiasingGraphsObject
 
-Returns the FaireaGraphsObject produced by run_framework
+Returns the DebiasingGraphsObject produced by run_framework
 
 
 ### Getters and graphs
 
-The following functions belong to the FaireaGraphsObject, but may also be called on the bias framework. Read the section on 
+The following functions belong to the DebiasingGraphsObject, but may also be called on the bias framework. For further details read the relevant section under [Debiasing Graphs](#debiasing-graphs).
 
-
-
-
+* get_debias_methodologies
+* get_error_metric_names
+* get_bias_metric_names
+* get_raw_data
+* show_single_graph
+* show_subplots
+* show_all_subplots
 
 
 
@@ -109,6 +115,7 @@ The following functions belong to the FaireaGraphsObject, but may also be called
 ## Debiasing Graphs
 
 A pair of classes which the user can interact with to visualise the results. We do not expect the user to create instances of these classes directly, but obtained as the result of computation performed by the bias framework or this class. Instances of these classes can be added together in order to display more results on a single plot.
+
 
 ## Debiasing Graphs Object
 
@@ -118,18 +125,61 @@ A baseline curve to compare the effects of the debiasing against is also recorde
 Optionally, a name can be provided. This is most useful when adding two graphs together, so you can identify which results originated in each graph.
 
 
+### get_debias_methodologies
+
+Returns: list[str]: The list of debiasing methodologies for which this class has recorded metrics
+
+### get_error_metric_names
+
+Returns: list[str]: The list of error metrics this class has recorded for the debiasing methodologies. Useful for identifying the correct keywords to specify a graph.
 
 
-# TODO 
-I need to figure out what details I am including here
+### Debiasing Graphs Composition
 
-## Debiasing Graphs Composition
+Wrapper around DebiasingGraphsObject to make it easier to combine plots without losing information. You should treat this as a DebiasingGraphsObject but with more limited ability to rename.
 
-Wrapper around DebiasingGraphsObject to make it easier to combine plots without losing information. 
+
+### get_bias_metric_names
+
+Returns: The list of bias metrics this class has recorded for the debiasing methodologies.
+Useful for identifying the correct keywords to specify a graph
+
+### get_raw_data
+
+Returns: The full dictionary of recorded metrics by debiasing techniques. This has format: debiasing technique name -> ['error', 'fairness'] -> metric name -> metric values
+
+
+### set_name
+
+Updates the recorded name, important for combining graphs so you can identify the origin of the plots
+
+### get_single_graph and show_single_graph
+
+get_single_graph returns the plotly figure of a graph showing the impact of debiasing as measured using the specified metrics. show_single_graph displays the same figure.
+
+Arguments:
+```
+error_metric (str): which error metric to use on the plot, call get_error_metric_names to find available values
+fairness_metric (str): which bias metric to use on the plot, call get_bias_metric_names to find available values
+```
+
+### get_subplots and show_subplots
+
+get_subplots returns the plotly figure of a matrix of graphs showing the impact of debiasing as measured using the specified metrics. show_subplots displays the same figure.
+
+Arguments:
+```
+error_metrics (list[str]): which error metrics to use on the plot, call get_error_metric_names to find available values
+fairness_metrics (list[str]): which bias metrics to use on the plot, call get_bias_metric_names to find available values
+```
+
+### get_all_subplots and show_all_subplots
+get_all_subplots returns the plotly figure of a matrix of graphs showing the impact of debiasing as measured using all available metrics. show_all_subplots displays the same figure.
+
 
 ## Future
 
-Here I will list some features I would like to implement or have been suggested. 
+Here I will list some features I would like to implement or have been suggested. Some of these will be user facing, others are more focused on maintainability.
 
 ### Selecting debiasing techniques 
 

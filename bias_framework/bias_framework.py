@@ -105,7 +105,7 @@ class Bias_Framework:
     
     
     def run_framework(self):     
-        """Executes the framework using the model, data, and pre-processing provided at initialisation and the definition of privilege set using one of the provided methods. This will run through a number of debiasing methodologies and save the results. This may take some time. Once finished, you may either call one of the graph displaying methods of this class or the get_FaireaGraphsObject method to get an object which stores just the result and can be added to similar objects to combine the graphs.
+        """Executes the framework using the model, data, and pre-processing provided at initialisation and the definition of privilege set using one of the provided methods. This will run through a number of debiasing methodologies and save the results. This may take some time. Once finished, you may either call one of the graph displaying methods of this class or the get_DebiasingGraphsObject method to get an object which stores just the result and can be added to similar objects to combine the graphs.
         """   
         
         # When this code is run we must assume the user has already assigned privilege. We can therefore apply the pre-processing step without losing information
@@ -193,7 +193,6 @@ class Bias_Framework:
         """We are using debiasing methods implemented in the aif360 library. These require aif360.datasets arguments, so we covert our dataframes to this form. 
         """
         
-        # To avoid recomputing for each debiasing methodology we create the aif360.datasets and pass them to each function
         # aif360.datasets take a dataframe argument, so make sure this is the type for both x_train and x_validation
         if isinstance(x_train, pd.DataFrame):
             df_train = x_train
