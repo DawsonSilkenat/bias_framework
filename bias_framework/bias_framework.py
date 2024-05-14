@@ -131,8 +131,8 @@ class Bias_Framework:
         print(f"{time.time() - start} seconds to run learning fair representation")
         
         start = time.time()
-        self.__reweighing(train_true_labels, validation_to_predict)
-        print(f"{time.time() - start} seconds to run reweighing")
+        self.__reweighting(train_true_labels, validation_to_predict)
+        print(f"{time.time() - start} seconds to run reweighting")
         
         start = time.time()
         self.__reject_option_classification(train_true_labels, train_predictions, validation_predictions)
@@ -318,7 +318,7 @@ class Bias_Framework:
             self.__metrics_by_debiasing_technique[f"learning fair representation with {number_of_prototypes} prototypes"]["raw"] = predicted_values
 
 
-    def __reweighing(self, train_true_labels, validation_to_predict):
+    def __reweighting(self, train_true_labels, validation_to_predict):
         training_dataset = train_true_labels.copy()
         
         # Applying reweighing to the training data
@@ -330,8 +330,8 @@ class Bias_Framework:
         # Note that we don't need to apply reweighing because that only impacts the training stage
         predicted_values = self.model.predict(validation_to_predict.copy().features)
         
-        self.__metrics_by_debiasing_technique["reweighing"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)
-        self.__metrics_by_debiasing_technique["reweighing"]["raw"] = predicted_values
+        self.__metrics_by_debiasing_technique["reweighting"] = bootstrap_all_metrics(self.y_validation, predicted_values, self.privilege_validation)
+        self.__metrics_by_debiasing_technique["reweighting"]["raw"] = predicted_values
     
     
     def __reject_option_classification(self, train_true_labels, train_predictions, validation_predicted_values):

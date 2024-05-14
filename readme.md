@@ -85,4 +85,48 @@ The second dictionary indicates that if sex has value 0 then the individual belo
 
 Executes the framework using the model, data, and pre-processing provided at initialisation and the definition of privilege set using one of the provided methods. This will run through a number of debiasing methodologies and save the results. This may take some time. Once finished, you may either call one of the graph displaying methods of this class or the get_FaireaGraphsObject method to get an object which stores just the result and can be added to similar objects to combine the graphs.
 
-### 
+
+
+
+# TODO 
+I need to continue this documentation, currently at the graph interactions
+
+
+
+
+## Future
+
+Here I will list some features I would like to implement or have been suggested. 
+
+### Selecting debiasing techniques 
+
+Right now, the framework runs all debiasing techniques on the ml model. Some of these take quite a long time to run or a user may already have some knowledge of which debiasing techniques they would like to use. 
+
+### Customisation of debiasing technique parameters 
+
+There are parameters to the debiasing methodologies which can be modified. One would assume that for a given task some values are going to be better than others. Therefore, letting the user user their insight into the problem to optimise results could be a significant improvement. 
+
+At the same time, we don't want to force the user to perform too must customisation, as this would increase the barrier to entry. 
+
+### Debiasing methodologies to new file
+
+Currently the debiasing methodologies are part of the framework class, we could reduce the complexity of this class and increase modularity by moving these to a new file in a similar form to metrics. Note, this would not really improve reusability since they rely on aif360.datasets
+
+I would further like to split debiasing techniques into pre-processing and post-processing techniques, since there may be limitations regarding the usability of some techniques. For instance, pre-processing can make use of information not available when deployed, while post processing could act on existing models without re-training. 
+
+In-processing should be considered, but unclear how.
+
+### Greater customisability of graphs
+
+I currently record a fair amount, but the user has no ability to use these in the graphs. For instance, say I would like to plot median with quartiles or customise how error is measured. 
+
+### debiasing outcome object
+
+I currently record results in dictionaries, however this provides a somewhat confusing experience and makes documentation more difficult as I need to explain the structure of the dictionary. Creating an object to handle this interaction could increase or decrease clarity. This requires further thought.
+
+### Simplify framework class
+
+I feel like this framework is either already complex enough or will become complex enough that the main class should do nothing more than orchestrate the interaction between classes. 
+
+
+
