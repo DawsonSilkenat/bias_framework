@@ -121,7 +121,7 @@ class DebiasingGraphsObject:
                 if row == len(error_metrics) - 1:
                     subplots.update_xaxes(title_text=f"Bias ({fairness_metric})", col=col+1, row=row+1)
         
-        subplots.update_layout(hight=200*len(error_metrics), width=800*len(fairness_metrics)) 
+        subplots.update_layout(height=400*len(error_metrics), width=600*len(fairness_metrics)) 
         return subplots
         
     
@@ -270,8 +270,8 @@ class DebiasingGraphsComposition:
         # Handles method calls intended for self.composite_debias_graph
         if self.composite_debias_graph == None:
             self.__compute_composite_debiasing_graph()
-            if hasattr(self.composite_debias_graph, attr):
-                return getattr(self.composite_debias_graph, attr)
+        if hasattr(self.composite_debias_graph, attr):
+            return getattr(self.composite_debias_graph, attr)
         
         raise AttributeError(f"No attribute '{attr}'")
 
