@@ -91,6 +91,15 @@ def get_all_metrics(y_true_values: np.array, y_predicted_values: np.array, privi
         privilege_status (np.array): Whether the individual to which each class is assigned belongs to the privileged group or unprivileged group
     Returns:
         dict[str, dict[str, float]]: A dictionary of metric type to a dictionary of metric name to metric value
+        
+    For example, the metric type of "error rate difference" is fairness so it would be accessed as result["fairness"]["error rate difference"].  A more detailed structure of the result is shown below.
+    result = {
+        "fairness" : {
+            "error rate difference" : 0.38,
+            ...
+        },
+        "error" : {...}   
+    }
     """
     
     return {
@@ -109,6 +118,18 @@ def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array,
         seed: Any valid input to np.random.default_rng, used for repeatability 
     Returns:
         dict[str, dict[str, dict[str, float]]]: A dictionary of metric type to a dictionary of metric name to a dictionary of summary statistic name to value
+        
+    For example, the metric type of "error rate difference" is fairness, and we may be interested in its standard deviation. This would be accessed as result["fairness"]["error rate difference"]["standard deviation"]. A more detailed structure of the result is shown below.
+    result = {
+        "fairness" : {
+            "error rate difference" : {
+                "standard deviation" : 0.24,
+                ...
+            },
+            ...
+        },
+        "error" : {...}   
+    }
     """
     
     rng = None
