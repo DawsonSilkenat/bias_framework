@@ -155,7 +155,7 @@ def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array,
             metric_stats[metric_type][metric_name] = {
                 "value": value,
                 "standard deviation": std,
-                # Contains nan values if std == 0, but required for plotting 
+                # Contains nan values if std == 0, but required for plotting so manually set to 0
                 "confidence interval": scipy.stats.norm.interval(0.95, loc=value, scale=std) if std != 0 else (value, value), 
                 "skew": scipy.stats.skew(metric_results),
                 "kurtosis": scipy.stats.kurtosis(metric_results),
