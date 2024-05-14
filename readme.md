@@ -130,5 +130,12 @@ I feel like this framework is either already complex enough or will become compl
 
 ### Random seed for bias framework
 
-I have already implemented some random seeds, but not everywhere. This is important for consistent testing
+I have already implemented random seeds for some functions, but not everywhere. Right now, there is no way for a user to enforce a consistent result, which is important for testing. 
 
+### Unit test code
+
+The methods producing graphs probably aren't unit testable beyond checking that they do not raise exceptions, but there still exists some functionality which can be tested.
+
+### More customisable bias
+
+I would like to debias with respect to one definition of privilege and be able to measure the impact on another definition to better understand complex relationships

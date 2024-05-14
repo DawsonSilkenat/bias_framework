@@ -11,7 +11,7 @@ class DebiasingGraphsObject:
     Optionally, a name can be provided. This is most useful when adding two graphs together, so you can identify which results originated in each graph.
     """
     
-    def __init__(self, metrics_by_debiasing_technique: dict[str, dict[str, dict[str, float]]], baseline_curve: Baseline | list[Baseline], name: str = None) -> None:
+    def __init__(self, metrics_by_debiasing_technique: dict[str, dict[str, dict[str, float]]], baseline_curve: Baseline, name: str = None) -> None:
         if not isinstance(baseline_curve, list):
             baseline_curve = [baseline_curve]
             
