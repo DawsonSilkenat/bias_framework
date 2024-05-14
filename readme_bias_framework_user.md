@@ -2,7 +2,7 @@
 
 The bias framework is designed to provide insight into bias and bias mitigation in machine learning. The goal is not to solve the problem or even to make a recommendation, but instead to provide a user with information that will help them make the required decisions.  
 
-Please note that this is still a work in progress, with a number of limitations. At th time of writing this (2024/05/13) we limit the bias framework to sklearn clarification models. Given time we would love to increase the flexibility and perhaps even increase the scope beyond classification. We also hope that this will never be truly complete as further research introduces innovative techniques for measuring and reducing bias.
+Please note that this is still a work in progress, with a number of limitations. At the time of writing this (2024/05/13) we limit the bias framework to sklearn clarification models. Given time we would love to increase the flexibility and perhaps even increase the scope beyond classification. We also hope that this will never be truly complete as further research introduces innovative techniques for measuring and reducing bias.
 
 ## High level overview
 A user will need to provide the bias framework with a machine model and a training/validation data split. They will then be able to define what they consider to be a privileged group, then simply call the run_framework method. After this method complete the user will be able to use a number of methods to generate and combine graphs displaying the impacts of bias across a range of metrics. 
@@ -12,13 +12,17 @@ Note that the output of this framework purely visual. While it is possible to as
 ## Table of Contents
 
 - [Bias Framework](#bias-framework)
+    - [Constructor](#\_\_init\_\_)
+    - [set_privilege_function](#set_privilege_function)
+    - [set_privileged_combinations](#set_privileged_combinations)
+    - [run_framework](#run_framework)
 - [Debiasing Graphs](#debiasing-graphs)
     - [Debiasing Graphs Object](#debiasing-graphs-object)
     - [Debiasing Graphs Composition](#debiasing-graphs-composition)
-- [Metrics](#metrics)
+<!-- - [Metrics](#metrics)
 - [Baselines](#baselines)
     - [Fairea Curve](#fairea-curve)
-    - [baseline](#baseline)
+    - [baseline](#baseline) -->
 - [Future](#future)
 
 
@@ -86,13 +90,42 @@ The second dictionary indicates that if sex has value 0 then the individual belo
 Executes the framework using the model, data, and pre-processing provided at initialisation and the definition of privilege set using one of the provided methods. This will run through a number of debiasing methodologies and save the results. This may take some time. Once finished, you may either call one of the graph displaying methods of this class or the get_FaireaGraphsObject method to get an object which stores just the result and can be added to similar objects to combine the graphs.
 
 
+### get_FaireaGraphsObject
+
+Returns the FaireaGraphsObject produced by run_framework
+
+
+### Getters and graphs
+
+The following functions belong to the FaireaGraphsObject, but may also be called on the bias framework. Read the section on 
+
+
+
+
+
+
+
+
+## Debiasing Graphs
+
+A pair of classes which the user can interact with to visualise the results. We do not expect the user to create instances of these classes directly, but obtained as the result of computation performed by the bias framework or this class. Instances of these classes can be added together in order to display more results on a single plot.
+
+## Debiasing Graphs Object
+
+This class is responsible for producing graphs related to debiasing. 
+To do this, it stores the recorded metrics in a nested dictionary with format: debiasing technique name -> ['error', 'fairness'] -> metric name -> metric values.
+A baseline curve to compare the effects of the debiasing against is also recorded using a purpose build class found the the baselines package.
+Optionally, a name can be provided. This is most useful when adding two graphs together, so you can identify which results originated in each graph.
+
+
 
 
 # TODO 
-I need to continue this documentation, currently at the graph interactions
+I need to figure out what details I am including here
 
+## Debiasing Graphs Composition
 
-
+Wrapper around DebiasingGraphsObject to make it easier to combine plots without losing information. 
 
 ## Future
 
@@ -139,3 +172,7 @@ The methods producing graphs probably aren't unit testable beyond checking that 
 ### More customisable bias
 
 I would like to debias with respect to one definition of privilege and be able to measure the impact on another definition to better understand complex relationships
+
+### DebiasingGraphsComposition inheritance 
+
+I would like DebiasingGraphsComposition to inherit from DebiasingGraphsObject to make type checking easier, however it then inherits all the functions so \_\_getattr\_\_ is not called, breaking functionality.

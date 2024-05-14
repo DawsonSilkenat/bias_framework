@@ -49,7 +49,7 @@ class Bias_Framework:
         self.pre_processing = pre_processing
         
         self.__model_args = model_args
-        self.__fairea = None
+        self.__debiasing_graph = None
         self.__metrics_by_debiasing_technique = dict()
     
     
@@ -146,47 +146,47 @@ class Bias_Framework:
         self.__equal_odds(train_true_labels, train_predictions, validation_predictions)
         print(f"{time.time() - start} seconds to run equal odds")
         
-        self.__fairea = DebiasingGraphsObject(self.__metrics_by_debiasing_technique, fairea_curve)
+        self.__debiasing_graph = DebiasingGraphsObject(self.__metrics_by_debiasing_technique, fairea_curve)
       
         
     def get_debias_methodologies(self) -> list[str]:
-        if self.__fairea is None:
+        if self.__debiasing_graph is None:
             return []
-        return self.__fairea.get_debias_methodologies()
+        return self.__debiasing_graph.get_debias_methodologies()
     
     
     def get_error_metric_names(self) -> list[str]:
-        if self.__fairea is None:
+        if self.__debiasing_graph is None:
             return []
-        return self.__fairea.get_error_metric_names()      
+        return self.__debiasing_graph.get_error_metric_names()      
      
                  
     def get_bias_metric_names(self) -> list[str]:
-        if self.__fairea is None:
+        if self.__debiasing_graph is None:
             return []
-        return self.__fairea.get_bias_metric_names()    
+        return self.__debiasing_graph.get_bias_metric_names()    
     
     
     def get_raw_data(self) -> dict[str, dict[str, dict[str, float]]]:
-        if self.__fairea is None:
+        if self.__debiasing_graph is None:
             return dict()
-        return self.__fairea.get_raw_data()    
+        return self.__debiasing_graph.get_raw_data()    
     
     
-    def get_FaireaGraphsObject(self) -> DebiasingGraphsObject:
-        return self.__fairea  
+    def get_DebiasingGraphsObject(self) -> DebiasingGraphsObject:
+        return self.__debiasing_graph  
     
     
-    def show_fairea_graph(self, error_metric: str, fairness_metric: str) -> None:
-        self.__fairea.show_single_graph(error_metric, fairness_metric)
+    def show_single_graph(self, error_metric: str, fairness_metric: str) -> None:
+        self.__debiasing_graph.show_single_graph(error_metric, fairness_metric)
     
     
-    def show_many_fairea_graphs(self, error_metrics: list[str], fairness_metrics: list[str]) -> None:
-        self.__fairea.show_subplots(error_metrics, fairness_metrics)
+    def show_subplots(self, error_metrics: list[str], fairness_metrics: list[str]) -> None:
+        self.__debiasing_graph.show_subplots(error_metrics, fairness_metrics)
         
     
-    def show_all_fairea_graphs(self) -> None:
-        self.__fairea.show_all_subplots()
+    def show_all_subplots(self) -> None:
+        self.__debiasing_graph.show_all_subplots()
         
         
     def __get_aif360_datasets(self, x_train, x_validation, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities):
