@@ -13,7 +13,7 @@ class FaireaCurve(Baseline):
         self.metrics_by_mutation = _fairea_model_mutation(true_values, predicted_values, privilege_status, fractions_to_mutate, repetitions)
     
     
-    def get_baseline_curve(self, error_metric: str, fairness_metric: str, color: str, showlegend: bool = True) -> go.Scatter:
+    def get_baseline_curve(self, error_metric: str, fairness_metric: str, color: str, showlegend: bool = True, include_labels: bool = True) -> go.Scatter:
         """Return a plotly object which can be added to a figure to display the fairea curve.
 
         Args:
@@ -21,7 +21,7 @@ class FaireaCurve(Baseline):
             fairness_metric (str): _description_
             color (str): _description_
             showlegend (bool, optional): _description_. Defaults to True.
-
+            include_labels (bool, optional): _description_. Defaults to True.
         Returns:
             go.Scatter: _description_
         """
@@ -38,7 +38,7 @@ class FaireaCurve(Baseline):
         return go.Scatter(
                 x=fairea_x, 
                 y=fairea_y, 
-                mode="lines+markers+text", 
+                mode="lines+markers+text" if include_labels else "lines+markers", 
                 name=f"{self.name} fairea baseline" if self.name else "fairea baseline", 
                 text=fairea_labels, 
                 textposition="bottom right", 

@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 class Bias_Framework:
-    def __init__(self, model, df_x_train: pd.DataFrame, df_x_validation: pd.DataFrame, df_y_train: pd.DataFrame, df_y_validation: pd.DataFrame,pre_processing=None, **model_args) -> None:
+    def __init__(self, model, df_x_train: pd.DataFrame, df_x_validation: pd.DataFrame, df_y_train: pd.DataFrame, df_y_validation: pd.DataFrame,pre_processing=None) -> None:
         """Creates an instance of the bias framework applied to the specified model and data
 
         Args:
@@ -48,9 +48,9 @@ class Bias_Framework:
         
         self.pre_processing = pre_processing
         
-        self.__model_args = model_args
         self.__debiasing_graph = None
         self.__metrics_by_debiasing_technique = dict()
+        self.__raw_results = dict()
     
     
     def set_privilege_function(self, privilege_function: callable) -> None:
@@ -266,7 +266,7 @@ class Bias_Framework:
     
     
     def __no_debiasing(self, x_train, x_validation):
-        self.model.fit(x_train, self.y_train, **self.__model_args)
+        self.model.fit(x_train, self.y_train)
         
         training_predicted_values = self.model.predict(x_train)
         training_probabilities = self.model.predict_proba(x_train)[:, 1]
@@ -306,7 +306,7 @@ class Bias_Framework:
                 predicted_values = np.full(len(self.y_validation), classes[0])
             else:
                 # Note that this debiasing methodology also seems to update the class labels. I'm not entirely clear on why, but does seem to get better results with the updated labels.
-                self.model.fit(transformed_data.features, transformed_data.labels.ravel(), **self.__model_args)
+                self.model.fit(transformed_data.features, transformed_data.labels.ravel())
 
                 validation_dataset = validation_to_predict.copy()
                 validation_dataset = fair_representation.transform(validation_dataset)
@@ -323,7 +323,7 @@ class Bias_Framework:
         # Applying reweighing to the training data
         reweighing = Reweighing(unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
         transformed_data = reweighing.fit_transform(training_dataset)
-        self.model.fit(transformed_data.features, transformed_data.labels.ravel(), sample_weight=transformed_data.instance_weights, **self.__model_args)
+        self.model.fit(transformed_data.features, transformed_data.labels.ravel(), sample_weight=transformed_data.instance_weights)
         
         # Applying the required modifications to the validation data and getting results for metric calculation
         # Note that we don't need to apply reweighing because that only impacts the training stage

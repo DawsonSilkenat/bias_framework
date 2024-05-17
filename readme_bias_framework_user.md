@@ -226,3 +226,7 @@ I would like to debias with respect to one definition of privilege and be able t
 ### DebiasingGraphsComposition inheritance 
 
 I would like DebiasingGraphsComposition to inherit from DebiasingGraphsObject to make type checking easier, however it then inherits all the functions so \_\_getattr\_\_ is not called, breaking functionality.
+
+### Input validation check
+
+If either our privileged or unprivileged groups lacks instances of the positive or negative class we will encounter issues, and speaks to a strong bias in the data. It may be worth checking for such a situation before running the framework.

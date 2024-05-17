@@ -54,7 +54,7 @@ class DebiasingGraphsObject:
             self.baseline_curve[0].name = name
         
     
-    def get_single_graph(self, error_metric: str, fairness_metric: str) -> go.Figure:
+    def get_single_graph(self, error_metric: str, fairness_metric: str, include_fairea_labels: bool = True) -> go.Figure:
         """Returns the plotly figure of a graph showing the impact of debiasing as measured using the specified metrics
 
         Args:
@@ -64,7 +64,7 @@ class DebiasingGraphsObject:
         Returns:
             go.Figure: The requested plot as a plotly figure
         """
-        data = self.__create_scatter_with_baseline(error_metric, fairness_metric)
+        data = self.__create_scatter_with_baseline(error_metric, fairness_metric, include_fairea_labels=include_fairea_labels)
         
         layout = go.Layout(
             xaxis_title=f"Bias ({fairness_metric})", 
@@ -78,17 +78,17 @@ class DebiasingGraphsObject:
         return figure
     
     
-    def show_single_graph(self, error_metric: str, fairness_metric: str) -> None:
+    def show_single_graph(self, error_metric: str, fairness_metric: str, include_fairea_labels: bool = True) -> None:
         """Displays a graph showing the impact of debiasing as measured using the specified metrics
         
         Args:
             error_metric (str): which error metric to use on the plot, call get_error_metric_names to find available values
             fairness_metric (str): which bias metric to use on the plot, call get_bias_metric_names to find available values
         """
-        self.get_single_graph(error_metric, fairness_metric).show()
+        self.get_single_graph(error_metric, fairness_metric, include_fairea_labels).show()
     
         
-    def get_subplots(self, error_metrics: list[str], fairness_metrics: list[str]) -> go.Figure:
+    def get_subplots(self, error_metrics: list[str], fairness_metrics: list[str], include_fairea_labels: bool = True) -> go.Figure:
         """Returns the plotly figure of a matrix of graphs showing the impact of debiasing as measured using the specified metrics
 
         Args:
@@ -107,7 +107,7 @@ class DebiasingGraphsObject:
         
         for row, error_metric in enumerate(error_metrics):
             for col, fairness_metric in enumerate(fairness_metrics):
-                plots = self.__create_scatter_with_baseline(error_metric, fairness_metric, showlegend=(row==0 and col==0))
+                plots = self.__create_scatter_with_baseline(error_metric, fairness_metric, showlegend=(row==0 and col==0), include_fairea_labels=include_fairea_labels)
                 for plot in plots:
                     # The subplots are 1 indexed, while enumerate is 0 index, hence the add 1
                     subplots.add_trace(plot, row=row+1, col=col+1)
@@ -125,24 +125,24 @@ class DebiasingGraphsObject:
         return subplots
         
     
-    def show_subplots(self, error_metrics: list[str], fairness_metrics: list[str]) -> None:
+    def show_subplots(self, error_metrics: list[str], fairness_metrics: list[str], include_fairea_labels: bool = True) -> None:
         """Displays a matrix of graphs showing the impact of debiasing as measured using the specified metrics
         
         Args:
             error_metrics (list[str]): which error metrics to use on the plot, call get_error_metric_names to find available values
             fairness_metrics (list[str]): which bias metrics to use on the plot, call get_bias_metric_names to find available values
         """
-        self.get_subplots(error_metrics, fairness_metrics).show()
+        self.get_subplots(error_metrics, fairness_metrics, include_fairea_labels).show()
     
      
-    def get_all_subplots(self) -> go.Figure:
+    def get_all_subplots(self, include_fairea_labels: bool = True) -> go.Figure:
         """Returns the plotly figure of a matrix of graphs showing the impact of debiasing as measured using all available metrics"""
-        return self.get_subplots(self.get_error_metric_names(), self.get_bias_metric_names()) 
+        return self.get_subplots(self.get_error_metric_names(), self.get_bias_metric_names(), include_fairea_labels) 
       
         
-    def show_all_subplots(self) -> None:
+    def show_all_subplots(self, include_fairea_labels: bool = True) -> None:
         """Displays a matrix of graphs showing the impact of debiasing as measured using all available metrics"""
-        self.get_all_subplots().show()
+        self.get_all_subplots(include_fairea_labels).show()
         
     
     def __create_debias_methodology_point(self, debias_methodology: str, error_metric: str, fairness_metric: str, color: str, showlegend=True) -> go.Scatter:
@@ -164,17 +164,24 @@ class DebiasingGraphsObject:
         debias_y = self.metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["value"]
         
         # Error bars to put on the single point
-        confidence_interval = self.metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["confidence interval"]
-        error_bars_x = (confidence_interval[0] - confidence_interval[1]) / 2
-        
-        confidence_interval = self.metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["confidence interval"]
-        error_bars_y = (confidence_interval[0] - confidence_interval[1]) / 2
+        error_bars_x = self.metrics_by_debiasing_technique[debias_methodology]["fairness"][fairness_metric]["standard deviation"]
+        error_bars_y = self.metrics_by_debiasing_technique[debias_methodology]["error"][error_metric]["standard deviation"]
         
         debias_result = go.Scatter(
             x=[debias_x], 
-            error_x={"type": "data", "array": [error_bars_x]}, 
+            error_x={
+                "type": "data", 
+                "symmetric": False,
+                "array": [min(error_bars_x, 1 - debias_x)],
+                "arrayminus": [min(error_bars_x, debias_x)]
+            }, 
             y=[debias_y], 
-            error_y={"type": "data", "array": [error_bars_y]}, 
+            error_y={
+                "type": "data", 
+                "symmetric": False,
+                "array": [min(error_bars_y, 1 - debias_y)],
+                "arrayminus": [min(error_bars_y, debias_y)]
+            }, 
             mode="markers", 
             name=f"{debias_methodology} outcome",
             showlegend=showlegend,
@@ -184,7 +191,7 @@ class DebiasingGraphsObject:
         return debias_result
     
     
-    def __create_scatter_with_baseline(self, error_metric: str, fairness_metric: str, debias_methodologies: list[str]=None, showlegend=True) -> list[go.Scatter]:
+    def __create_scatter_with_baseline(self, error_metric: str, fairness_metric: str, debias_methodologies: list[str]=None, showlegend=True, include_fairea_labels=True) -> list[go.Scatter]:
         """Create a scatterplot using the specified arguments, to be plotted on either an individual plot or with subplots
 
         Args:
@@ -210,7 +217,7 @@ class DebiasingGraphsObject:
 
         baseline_curves = []
         for baseline_curve in self.baseline_curve:
-            baseline_curves.append(baseline_curve.get_baseline_curve(error_metric, fairness_metric, colors[0], showlegend))
+            baseline_curves.append(baseline_curve.get_baseline_curve(error_metric, fairness_metric, colors[0], showlegend, include_fairea_labels))
             colors = colors[1:]
         
         scatter_plots = [self.__create_debias_methodology_point(method, error_metric, fairness_metric, color=color, showlegend=showlegend) for method, color in zip(debias_methodologies, colors)]

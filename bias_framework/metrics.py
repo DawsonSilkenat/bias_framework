@@ -5,6 +5,7 @@ from aif360.metrics import ClassificationMetric
 import numpy as np
 import pandas as pd
 import scipy.stats 
+import warnings
 
 
 def get_error_metrics(y_true_values: np.array, y_predicted_values: np.array) -> dict[str, float]:
@@ -33,12 +34,13 @@ def get_error_metrics(y_true_values: np.array, y_predicted_values: np.array) -> 
     return metrics
 
 
-def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, privilege_status: np.array) -> dict[str, float]:    
+def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, privilege_status: np.array, smoothing_terms: bool=False) -> dict[str, float]:    
     """Computes a number of fairness metrics, returned as a dictionary containing the fairness metrics names and values.
     Args:
         y_true_values (np.array): The true classes for a dataset
         y_predicted_values (np.array): The model predicted classes for the same dataset as y_true_values
         privilege_status (np.array): Whether the individual to which each class is assigned belongs to the privileged group or unprivileged group
+        smoothing_terms (bool): Whether to add a single instance of each privilege/class combination to the results. This avoids zero division while having only a small impact on large datasets
     Returns:
         dict[str, float]: A dictionary of metric name to metric value
     """
@@ -53,6 +55,20 @@ def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, 
         "Class Label" : y_predicted_values
     })
     
+    if smoothing_terms:
+        # These combine to give all 8 combinations of privileged, class label, and accurate prediction
+        df_smoothing_true_class = pd.DataFrame({
+            "Is Privileged" : [1, 1, 0, 0, 1, 1, 0, 0], 
+            "Class Label" : [1, 0, 1, 0, 1, 0, 1, 0]
+        })
+        
+        df_smoothing_predicted_class = pd.DataFrame({
+            "Is Privileged" : [1, 1, 0, 0, 1, 1, 0, 0], 
+            "Class Label" : [1, 0, 1, 0, 0, 1, 0, 1]
+        })
+                
+        df_dataset_with_true_class = pd.concat([df_dataset_with_true_class, df_smoothing_true_class])
+        df_dataset_with_predicted_class = pd.concat([df_dataset_with_predicted_class, df_smoothing_predicted_class])
     
     # I don't believe the values of protected_attribute_names and privileged_classes matter here since this is really set in ClassificationMetric, however these are required fields so might as well set them reasonably. 
     dataset_with_true_class = StandardDataset(
@@ -75,10 +91,14 @@ def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, 
     classification_metric = ClassificationMetric(dataset_with_true_class, dataset_with_predicted_class, unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
 
     metrics = dict()
-    metrics["statistical parity difference"] = abs(classification_metric.statistical_parity_difference())
-    metrics["average odds difference"]       = abs(classification_metric.average_abs_odds_difference())
-    metrics["equal opportunity difference"]  = abs(classification_metric.equal_opportunity_difference())
-    metrics["error rate difference"]         = abs(classification_metric.error_rate_difference())
+    
+    # These seem to raise a RuntimeWarning: invalid value encountered in double_scalars often, which makes reading the output annoying
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        metrics["statistical parity difference"] = abs(classification_metric.statistical_parity_difference())
+        metrics["average odds difference"]       = abs(classification_metric.average_abs_odds_difference())
+        metrics["equal opportunity difference"]  = abs(classification_metric.equal_opportunity_difference())
+        metrics["error rate difference"]         = abs(classification_metric.error_rate_difference())
     
     return metrics
 
@@ -108,7 +128,7 @@ def get_all_metrics(y_true_values: np.array, y_predicted_values: np.array, privi
     }
     
     
-def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array, privilege_status: np.array, repetitions: int = 100, seed=None) -> dict[str, dict[str, dict[str, float]]]:
+def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array, privilege_status: np.array, repetitions: int = 200, seed=None) -> dict[str, dict[str, dict[str, float]]]:
     """Applies bootstrap resampling in order to estimate a number of summary statistics on the results found by get_all_metrics
     Args:
         y_true_values (np.array): The true classes for a dataset
@@ -131,10 +151,12 @@ def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array,
         "error" : {...}   
     }
     """
+    values = get_all_metrics(y_true_values, y_predicted_values, privilege_status)
     
     rng = None
-    if seed is not None:
-        rng = np.random.default_rng(seed)
+    # TODO This does not appear to be supported by the current version of sklearn. Come back to how I support consistent rng
+    # if seed is not None:
+    #     rng = np.random.default_rng(seed)
     
     # Record the result of each repetition 
     bootstrapped_metrics = []
@@ -148,8 +170,15 @@ def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array,
         metric_stats[metric_type] = dict()
         
         for metric_name in bootstrapped_metrics[0][metric_type].keys():
-            metric_results = [result[metric_type][metric_name]  for result in bootstrapped_metrics]
-            value = np.mean(metric_results)
+            metric_results = [result[metric_type][metric_name] for result in bootstrapped_metrics]
+            
+            # TODO I should consider alternative ways of approaching this, but for now it is good enough
+            # For some metrics and subsamples we get NaN results, which makes all our statistics NaN if included. Thus, exclude any NaN values
+            metric_results = [result for result in metric_results if not np.isnan(result)]
+            if len(metric_results) == 0:
+                continue
+            
+            value = values[metric_type][metric_name]
             std = np.std(metric_results)
             
             metric_stats[metric_type][metric_name] = {
