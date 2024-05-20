@@ -96,7 +96,7 @@ def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         metrics["statistical parity difference"] = abs(classification_metric.statistical_parity_difference())
-        metrics["average odds difference"]       = abs(classification_metric.average_abs_odds_difference())
+        metrics["average odds difference"]       = classification_metric.average_abs_odds_difference()
         metrics["equal opportunity difference"]  = abs(classification_metric.equal_opportunity_difference())
         metrics["error rate difference"]         = abs(classification_metric.error_rate_difference())
     
