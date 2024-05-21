@@ -10,6 +10,8 @@ from sklearn.calibration import CalibratedClassifierCV
 from scipy import sparse
 from .debiasing_graphs import DebiasingGraphsObject
 from .baselines.fairea_curve import FaireaCurve
+from .dataset_processing import covert_to_datasets_train, covert_to_datasets_validation
+from .debiasing import *
 
 # This is only for information on runtime rather than used functionally
 import time
@@ -104,49 +106,99 @@ class Bias_Framework:
         self.set_privilege_function(privilege_function)
     
     
-    def run_framework(self):     
-        """Executes the framework using the model, data, and pre-processing provided at initialisation and the definition of privilege set using one of the provided methods. This will run through a number of debiasing methodologies and save the results. This may take some time. Once finished, you may either call one of the graph displaying methods of this class or the get_DebiasingGraphsObject method to get an object which stores just the result and can be added to similar objects to combine the graphs.
-        """   
-        
-        # When this code is run we must assume the user has already assigned privilege. We can therefore apply the pre-processing step without losing information
+    def run_framework(self, seed=None):
         x_train = self.df_x_train
-        if self.pre_processing:
-            x_train = self.pre_processing.fit_transform(x_train, self.y_train)
         x_validation = self.df_x_validation
         if self.pre_processing:
+            x_train = self.pre_processing.fit_transform(x_train, self.y_train)
             x_validation = self.pre_processing.transform(x_validation)
-        
-        start = time.time()
-        training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities = self.__no_debiasing(x_train, x_validation)
-        print(f"{time.time() - start} seconds to run with no debiasing")
-        
-        start = time.time()
-        fairea_curve = FaireaCurve(self.y_validation, validation_predicted_values, self.privilege_validation)
-        print(f"{time.time() - start} seconds to get fairea baseline")
+
+        train_predictions, training_probabilities, validation_predictions, validation_probabilities = no_debiasing(self.model, x_train, x_validation, self.y_train)
          
-        train_true_labels, train_predictions, validation_predictions, validation_to_predict = self.__get_aif360_datasets(x_train, x_validation, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities)
-        
         start = time.time()
-        self.__learning_fair_representation(train_true_labels, validation_to_predict) 
+        fairea_curve = FaireaCurve(self.y_validation, validation_predictions, self.privilege_validation)
+        print(f"{time.time() - start} seconds to get fairea baseline")
+        
+        ds_train_true_labels, ds_train_predictions = covert_to_datasets_train(x_train, self.y_train, train_predictions, training_probabilities, self.privilege_train)
+        ds_validation_predictions, ds_validation_to_predict = covert_to_datasets_validation(x_validation, validation_predictions, validation_probabilities, self.privilege_validation)
+        
+        raw_results = dict()
+                
+        start = time.time()
+        debiasing_result = learning_fair_representation(self.model, ds_train_true_labels, ds_validation_to_predict, seed=seed) 
+        raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run learning fair representation")
         
         start = time.time()
-        self.__reweighting(train_true_labels, validation_to_predict)
+        debiasing_result = reweighting(self.model, ds_train_true_labels, ds_validation_to_predict)
+        raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run reweighting")
         
         start = time.time()
-        self.__reject_option_classification(train_true_labels, train_predictions, validation_predictions)
+        debiasing_result = reject_option_classification(ds_train_true_labels, ds_train_predictions, ds_validation_predictions)
+        raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run reject option classification")
         
         start = time.time()
-        self.__calibrated_equal_odds(train_true_labels, train_predictions, validation_predictions)
+        debiasing_result = calibrated_equal_odds(ds_train_true_labels, ds_train_predictions, ds_validation_to_predict, seed=seed)
+        raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run calibrated equal odds")
         
         start = time.time()
-        self.__equal_odds(train_true_labels, train_predictions, validation_predictions)
+        debiasing_result = equal_odds(ds_train_true_labels, ds_train_predictions, ds_validation_predictions, seed=seed)
+        raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run equal odds")
         
+        self.__metrics_by_debiasing_technique = {key : bootstrap_all_metrics(self.y_validation, value, self.privilege_validation, seed=seed) for key, value in raw_results.items()}
         self.__debiasing_graph = DebiasingGraphsObject(self.__metrics_by_debiasing_technique, fairea_curve)
+        
+        
+        
+    
+    
+    # def run_framework(self):     
+    #     """Executes the framework using the model, data, and pre-processing provided at initialisation and the definition of privilege set using one of the provided methods. This will run through a number of debiasing methodologies and save the results. This may take some time. Once finished, you may either call one of the graph displaying methods of this class or the get_DebiasingGraphsObject method to get an object which stores just the result and can be added to similar objects to combine the graphs.
+    #     """   
+        
+    #     # When this code is run we must assume the user has already assigned privilege. We can therefore apply the pre-processing step without losing information
+    #     x_train = self.df_x_train
+    #     if self.pre_processing:
+    #         x_train = self.pre_processing.fit_transform(x_train, self.y_train)
+    #     x_validation = self.df_x_validation
+    #     if self.pre_processing:
+    #         x_validation = self.pre_processing.transform(x_validation)
+        
+    #     start = time.time()
+    #     training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities = self.__no_debiasing(x_train, x_validation)
+    #     print(f"{time.time() - start} seconds to run with no debiasing")
+        
+    #     start = time.time()
+    #     fairea_curve = FaireaCurve(self.y_validation, validation_predicted_values, self.privilege_validation)
+    #     print(f"{time.time() - start} seconds to get fairea baseline")
+         
+    #     train_true_labels, train_predictions, validation_predictions, validation_to_predict = self.__get_aif360_datasets(x_train, x_validation, training_predicted_values, training_probabilities, validation_predicted_values, validation_probabilities)
+        
+    #     start = time.time()
+    #     self.__learning_fair_representation(train_true_labels, validation_to_predict) 
+    #     print(f"{time.time() - start} seconds to run learning fair representation")
+        
+    #     start = time.time()
+    #     self.__reweighting(train_true_labels, validation_to_predict)
+    #     print(f"{time.time() - start} seconds to run reweighting")
+        
+    #     start = time.time()
+    #     self.__reject_option_classification(train_true_labels, train_predictions, validation_predictions)
+    #     print(f"{time.time() - start} seconds to run reject option classification")
+        
+        # start = time.time()
+        # self.__calibrated_equal_odds(train_true_labels, train_predictions, validation_predictions)
+        # print(f"{time.time() - start} seconds to run calibrated equal odds")
+        
+        # start = time.time()
+        # self.__equal_odds(train_true_labels, train_predictions, validation_predictions)
+        # print(f"{time.time() - start} seconds to run equal odds")
+        
+        # self.__debiasing_graph = DebiasingGraphsObject(self.__metrics_by_debiasing_technique, fairea_curve)
       
         
     def get_debias_methodologies(self) -> list[str]:

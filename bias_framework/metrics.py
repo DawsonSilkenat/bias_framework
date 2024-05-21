@@ -34,53 +34,37 @@ def get_error_metrics(y_true_values: np.array, y_predicted_values: np.array) -> 
     return metrics
 
 
-def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, privilege_status: np.array, smoothing_terms: bool=False) -> dict[str, float]:    
+def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, privilege_status: np.array) -> dict[str, float]:    
     """Computes a number of fairness metrics, returned as a dictionary containing the fairness metrics names and values.
     Args:
         y_true_values (np.array): The true classes for a dataset
         y_predicted_values (np.array): The model predicted classes for the same dataset as y_true_values
         privilege_status (np.array): Whether the individual to which each class is assigned belongs to the privileged group or unprivileged group
-        smoothing_terms (bool): Whether to add a single instance of each privilege/class combination to the results. This avoids zero division while having only a small impact on large datasets
     Returns:
         dict[str, float]: A dictionary of metric name to metric value
     """
         
-    df_dataset_with_true_class = pd.DataFrame({
+    df_true_class = pd.DataFrame({
         "Is Privileged" : privilege_status, 
         "Class Label" : y_true_values
     })
     
-    df_dataset_with_predicted_class = pd.DataFrame({
+    df_predicted_class = pd.DataFrame({
         "Is Privileged" : privilege_status, 
         "Class Label" : y_predicted_values
     })
     
-    if smoothing_terms:
-        # These combine to give all 8 combinations of privileged, class label, and accurate prediction
-        df_smoothing_true_class = pd.DataFrame({
-            "Is Privileged" : [1, 1, 0, 0, 1, 1, 0, 0], 
-            "Class Label" : [1, 0, 1, 0, 1, 0, 1, 0]
-        })
-        
-        df_smoothing_predicted_class = pd.DataFrame({
-            "Is Privileged" : [1, 1, 0, 0, 1, 1, 0, 0], 
-            "Class Label" : [1, 0, 1, 0, 0, 1, 0, 1]
-        })
-                
-        df_dataset_with_true_class = pd.concat([df_dataset_with_true_class, df_smoothing_true_class])
-        df_dataset_with_predicted_class = pd.concat([df_dataset_with_predicted_class, df_smoothing_predicted_class])
-    
     # I don't believe the values of protected_attribute_names and privileged_classes matter here since this is really set in ClassificationMetric, however these are required fields so might as well set them reasonably. 
-    dataset_with_true_class = StandardDataset(
-        df_dataset_with_true_class, 
+    ds_true_class = StandardDataset(
+        df_true_class, 
         label_name="Class Label", 
         favorable_classes=[1],
         protected_attribute_names=["Is Privileged"], 
         privileged_classes=[[1]]
     )
     
-    dataset_with_predicted_class = StandardDataset(
-        df_dataset_with_predicted_class, 
+    ds_predicted_class = StandardDataset(
+        df_predicted_class, 
         label_name="Class Label", 
         favorable_classes=[1],
         protected_attribute_names=["Is Privileged"], 
@@ -88,17 +72,30 @@ def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, 
     )
     
 
-    classification_metric = ClassificationMetric(dataset_with_true_class, dataset_with_predicted_class, unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
+    classification_metric = ClassificationMetric(ds_true_class, ds_predicted_class, unprivileged_groups=[{"Is Privileged" : 0}], privileged_groups=[{"Is Privileged" : 1}])
 
     metrics = dict()
     
-    # These seem to raise a RuntimeWarning: invalid value encountered in double_scalars often, which makes reading the output annoying
+    # TODO These seem to raise a RuntimeWarning: invalid value encountered in double_scalars often, which makes reading the output annoying
+    # I believe this is because these methods calculate some values they don't actually require, but I should find a way to double check this 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         metrics["statistical parity difference"] = abs(classification_metric.statistical_parity_difference())
         metrics["average odds difference"]       = classification_metric.average_abs_odds_difference()
         metrics["equal opportunity difference"]  = abs(classification_metric.equal_opportunity_difference())
         metrics["error rate difference"]         = abs(classification_metric.error_rate_difference())
+        
+        
+        disparate_impact = classification_metric.disparate_impact()
+        if disparate_impact > 1:
+            disparate_impact = 1 / disparate_impact
+        metrics["disparate impact"] = disparate_impact
+        
+        
+        classification_metric.true_positive_rate_difference # Same as equal_opportunity_difference
+        classification_metric.false_discovery_rate_difference
+        classification_metric.generalized_equalized_odds_difference
+        
     
     return metrics
 
@@ -153,15 +150,17 @@ def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array,
     """
     values = get_all_metrics(y_true_values, y_predicted_values, privilege_status)
     
-    rng = None
-    # TODO This does not appear to be supported by the current version of sklearn. Come back to how I support consistent rng
-    # if seed is not None:
-    #     rng = np.random.default_rng(seed)
+    # Since sklearn.utils.resample does not support using np.random.default_rng directly, we will generate random numbers 
+    # to use as the random state argument. We set the range of these randomly generated numbers to the square of the number
+    # of repetitions since this gives us around a 0.6 probability of having no repeats. A couple of repeats is ok, but 
+    # we want the samples to be as independent as possible
+    rng = np.random.default_rng(seed)
+    random_range = repetitions ** 2
     
     # Record the result of each repetition 
     bootstrapped_metrics = []
     for _ in range(repetitions):
-        true_values_boot, predicted_values_boot, privilege_status_boot = resample(y_true_values, y_predicted_values, privilege_status, random_state=rng)
+        true_values_boot, predicted_values_boot, privilege_status_boot = resample(y_true_values, y_predicted_values, privilege_status, random_state=rng.integers(random_range))
         bootstrapped_metrics.append(get_all_metrics(true_values_boot, predicted_values_boot, privilege_status_boot))
     
     # Create the dictionary to return containing the calculated statistics about each metric
@@ -184,7 +183,6 @@ def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array,
             metric_stats[metric_type][metric_name] = {
                 "value": value,
                 "standard deviation": std,
-                # Contains nan values if std == 0, but required for plotting so manually set to 0
                 "confidence interval": scipy.stats.norm.interval(0.95, loc=value, scale=std) if std != 0 else (value, value), 
                 "skew": scipy.stats.skew(metric_results),
                 "kurtosis": scipy.stats.kurtosis(metric_results),

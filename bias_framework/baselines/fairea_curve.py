@@ -47,9 +47,11 @@ class FaireaCurve(Baseline):
         )
         
        
-def _fairea_model_mutation(true_values: np.array, predicted_values: np.array, privilege_status: np.array, fractions_to_mutate: list[float], repetitions: int) -> list[tuple[float, dict[str, dict[str, float]]]]:
+def _fairea_model_mutation(true_values: np.array, predicted_values: np.array, privilege_status: np.array, fractions_to_mutate: list[float], repetitions: int, seed: int = None) -> list[tuple[float, dict[str, dict[str, float]]]]:
     # Source: https://solar.cs.ucl.ac.uk/pdf/hort2021fairea.pdf
 
+    rng = np.random.default_rng(seed)
+    
     # The Fairea paper used the mutation strategy where all values were mutated to the same label, and the label to mutate to was the one which produced the highest accuracy with 100% mutation. We follow this suggestion.
     mutate_to_value = np.argmax(np.bincount(true_values))
 
@@ -65,7 +67,7 @@ def _fairea_model_mutation(true_values: np.array, predicted_values: np.array, pr
 
         for _ in range(repetitions):
             # Creating the mutated predictions and retrieving metrics
-            indexes_to_mutate = np.random.choice(len(predicted_values), number_to_mutate, replace=False)
+            indexes_to_mutate = rng.choice(len(predicted_values), number_to_mutate, replace=False)
             mutated_predictions = np.copy(predicted_values)
             mutated_predictions[indexes_to_mutate] = mutate_to_value
 
