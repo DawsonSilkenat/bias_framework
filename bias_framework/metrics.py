@@ -86,15 +86,15 @@ def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, 
         metrics["error rate difference"]         = abs(classification_metric.error_rate_difference())
         
         
-        disparate_impact = classification_metric.disparate_impact()
-        if disparate_impact > 1:
-            disparate_impact = 1 / disparate_impact
-        metrics["disparate impact"] = disparate_impact
+        # disparate_impact = classification_metric.disparate_impact()
+        # if disparate_impact > 1:
+        #     disparate_impact = 1 / disparate_impact
+        # metrics["disparate impact"] = disparate_impact
         
         
-        classification_metric.true_positive_rate_difference # Same as equal_opportunity_difference
-        classification_metric.false_discovery_rate_difference
-        classification_metric.generalized_equalized_odds_difference
+        # classification_metric.true_positive_rate_difference # Same as equal_opportunity_difference
+        # classification_metric.false_discovery_rate_difference
+        # classification_metric.generalized_equalized_odds_difference
         
     
     return metrics
