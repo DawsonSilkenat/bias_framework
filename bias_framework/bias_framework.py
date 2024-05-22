@@ -105,11 +105,7 @@ class Bias_Framework:
             x_validation = self.pre_processing.transform(x_validation)
 
         train_predictions, training_probabilities, validation_predictions, validation_probabilities = no_debiasing(
-            self.model, x_train, x_validation, self.y_train)
-        
-        # TODO remove this
-        self.probabilities = [training_probabilities, validation_probabilities]
-        
+            self.model, x_train, x_validation, self.y_train) 
 
         start = time.time()
         fairea_curve = FaireaCurve(
@@ -120,10 +116,6 @@ class Bias_Framework:
             x_train, self.y_train, train_predictions, training_probabilities, self.privilege_train)
         ds_validation_predictions, ds_validation_no_labels = covert_to_datasets_validation(
             x_validation, validation_predictions, validation_probabilities, self.privilege_validation)
-        
-        
-        self.probabilities.append(np.copy(ds_train_predictions.scores))
-        self.probabilities.append(np.copy(ds_validation_predictions.scores))
 
         raw_results = dict()
 
@@ -138,18 +130,12 @@ class Bias_Framework:
             self.model, ds_train_true_labels, ds_validation_no_labels)
         raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run reweighting")
-        
-        self.probabilities.append(ds_train_predictions.scores)
-        self.probabilities.append(ds_validation_predictions.scores)
 
         start = time.time()
         debiasing_result = reject_option_classification(
             ds_train_true_labels, ds_train_predictions, ds_validation_predictions)
         raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run reject option classification")
-        
-        self.probabilities.append(np.copy(ds_train_predictions.scores))
-        self.probabilities.append(np.copy(ds_validation_predictions.scores))
 
         start = time.time()
         debiasing_result = calibrated_equal_odds(
@@ -157,17 +143,11 @@ class Bias_Framework:
         raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run calibrated equal odds")
 
-        self.probabilities.append(np.copy(ds_train_predictions.scores))
-        self.probabilities.append(np.copy(ds_validation_predictions.scores))
-
         start = time.time()
         debiasing_result = equal_odds(
             ds_train_true_labels, ds_train_predictions, ds_validation_predictions, seed=seed)
         raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run equal odds")
-        
-        self.probabilities.append(np.copy(ds_train_predictions.scores))
-        self.probabilities.append(np.copy(ds_validation_predictions.scores))
 
         self.__metrics_by_debiasing_technique = {key: bootstrap_all_metrics(
             self.y_validation, value, self.privilege_validation, seed=seed) for key, value in raw_results.items()}
