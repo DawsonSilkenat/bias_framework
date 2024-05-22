@@ -99,12 +99,12 @@ def covert_to_datasets_validation(x_validation, validation_predictions: np.array
     )
 
     # Some debiasing methodologies need a dataset not only for training but also application. This dataset exists for that purpose, and hides class labels so that the information cannot leak
-    df_validation_to_predict = df_x_validation.copy()
-    df_validation_to_predict["Class Label"] = np.zeros(
-        len(df_validation_to_predict))
+    df_validation_no_labels = df_x_validation.copy()
+    df_validation_no_labels["Class Label"] = np.zeros(
+        len(df_validation_no_labels))
 
     ds_validation_to_predict = StandardDataset(
-        df_validation_to_predict,
+        df_validation_no_labels,
         label_name="Class Label",
         favorable_classes=[1],
         protected_attribute_names=["Is Privileged"],

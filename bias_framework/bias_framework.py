@@ -32,11 +32,11 @@ class Bias_Framework:
         # TODO create class which defines the required interface, remove this line of code and place responsibility on user to satisfy interface
         self.model = CalibratedClassifierCV(estimator=model)
 
-        self.df_x_train = df_x_train
-        self.df_x_validation = df_x_validation
+        self.df_x_train = df_x_train.copy()
+        self.df_x_validation = df_x_validation.copy()
 
-        self.y_train = df_y_train.to_numpy().ravel()
-        self.y_validation = df_y_validation.to_numpy().ravel()
+        self.y_train = df_y_train.copy().to_numpy().ravel()
+        self.y_validation = df_y_validation.copy().to_numpy().ravel()
 
         self.privilege_train = np.ones(len(df_x_train))
         self.privilege_validation = np.ones(len(df_y_train))
@@ -106,6 +106,10 @@ class Bias_Framework:
 
         train_predictions, training_probabilities, validation_predictions, validation_probabilities = no_debiasing(
             self.model, x_train, x_validation, self.y_train)
+        
+        # TODO remove this
+        self.probabilities = [training_probabilities, validation_probabilities]
+        
 
         start = time.time()
         fairea_curve = FaireaCurve(
@@ -114,40 +118,56 @@ class Bias_Framework:
 
         ds_train_true_labels, ds_train_predictions = covert_to_datasets_train(
             x_train, self.y_train, train_predictions, training_probabilities, self.privilege_train)
-        ds_validation_predictions, ds_validation_to_predict = covert_to_datasets_validation(
+        ds_validation_predictions, ds_validation_no_labels = covert_to_datasets_validation(
             x_validation, validation_predictions, validation_probabilities, self.privilege_validation)
+        
+        
+        self.probabilities.append(np.copy(ds_train_predictions.scores))
+        self.probabilities.append(np.copy(ds_validation_predictions.scores))
 
         raw_results = dict()
 
         start = time.time()
         debiasing_result = learning_fair_representation(
-            self.model, ds_train_true_labels, ds_validation_to_predict, seed=seed)
+            self.model, ds_train_true_labels, ds_validation_no_labels, seed=seed)
         raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run learning fair representation")
 
         start = time.time()
         debiasing_result = reweighting(
-            self.model, ds_train_true_labels, ds_validation_to_predict)
+            self.model, ds_train_true_labels, ds_validation_no_labels)
         raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run reweighting")
+        
+        self.probabilities.append(ds_train_predictions.scores)
+        self.probabilities.append(ds_validation_predictions.scores)
 
         start = time.time()
         debiasing_result = reject_option_classification(
             ds_train_true_labels, ds_train_predictions, ds_validation_predictions)
         raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run reject option classification")
+        
+        self.probabilities.append(np.copy(ds_train_predictions.scores))
+        self.probabilities.append(np.copy(ds_validation_predictions.scores))
 
         start = time.time()
         debiasing_result = calibrated_equal_odds(
-            ds_train_true_labels, ds_train_predictions, ds_validation_to_predict, seed=seed)
+            ds_train_true_labels, ds_train_predictions, ds_validation_predictions, seed=seed)
         raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run calibrated equal odds")
+
+        self.probabilities.append(np.copy(ds_train_predictions.scores))
+        self.probabilities.append(np.copy(ds_validation_predictions.scores))
 
         start = time.time()
         debiasing_result = equal_odds(
             ds_train_true_labels, ds_train_predictions, ds_validation_predictions, seed=seed)
         raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run equal odds")
+        
+        self.probabilities.append(np.copy(ds_train_predictions.scores))
+        self.probabilities.append(np.copy(ds_validation_predictions.scores))
 
         self.__metrics_by_debiasing_technique = {key: bootstrap_all_metrics(
             self.y_validation, value, self.privilege_validation, seed=seed) for key, value in raw_results.items()}

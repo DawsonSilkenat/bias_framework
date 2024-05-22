@@ -181,10 +181,10 @@ def equal_odds(ds_train_true_labels: StandardDataset, ds_train_predictions: Stan
         dict[str, np.array]: Maps the string 'equal odds' to the model predictions
     """
     results = dict()
-    calibrated_equal_odds = EqOddsPostprocessing(
+    equal_odds = EqOddsPostprocessing(
         [{"Is Privileged": 0}], privileged_groups=[{"Is Privileged": 1}], seed=seed)
-    calibrated_equal_odds.fit(ds_train_true_labels, ds_train_predictions)
-    results["equal odds"] = calibrated_equal_odds.predict(
+    equal_odds.fit(ds_train_true_labels, ds_train_predictions)
+    results["equal odds"] = equal_odds.predict(
         ds_validation_predictions).labels.ravel()
 
     return results
