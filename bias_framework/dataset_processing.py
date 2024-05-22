@@ -16,11 +16,12 @@ def _to_pandas_dataframe(input: ArrayLike) -> pd.DataFrame:
         try:
             df_input = pd.DataFrame(input)
         except:
-            raise RuntimeError(f"Pre-processing results in an unrecognised datatype. Please make sure running pre-processing returns a pandas dataframe or a convertible type. If you have used no pre-processing, make sure your data is of the expected type\nEncountered type: {type(input)}")
-        
+            raise RuntimeError(
+                f"Pre-processing results in an unrecognised datatype. Please make sure running pre-processing returns a pandas dataframe or a convertible type. If you have used no pre-processing, make sure your data is of the expected type\nEncountered type: {type(input)}")
+
     return df_input
- 
- 
+
+
 def covert_to_datasets_train(x_train, y_train: np.array, train_predictions: np.array, train_probabilities: np.array, privilege_train: np.array) -> tuple[StandardDataset, StandardDataset]:
     """Converts the training data into aif360.datasets StandardDataset objects. Objects of this type are required for the debiasing methods implemented in aif360. These datasets are primarily used in pre-processing debiasing methodologies. I personally find these a bit unintuitive to work with, so have attempted to not require the user consider their implementation.
 
@@ -38,34 +39,34 @@ def covert_to_datasets_train(x_train, y_train: np.array, train_predictions: np.a
     """
     df_x_train = _to_pandas_dataframe(x_train)
     df_x_train["Is Privileged"] = privilege_train
-    
+
     df_train_true_labels = df_x_train.copy()
     df_train_true_labels["Class Label"] = y_train
- 
+
     ds_train_true_labels = StandardDataset(
-        df_train_true_labels, 
-        label_name="Class Label", 
+        df_train_true_labels,
+        label_name="Class Label",
         favorable_classes=[1],
-        protected_attribute_names=["Is Privileged"], 
+        protected_attribute_names=["Is Privileged"],
         privileged_classes=[[1]]
-    ) 
-    
+    )
+
     df_train_predictions = df_x_train.copy()
     df_train_predictions["Probabilities"] = train_probabilities
     df_train_predictions["Class Label"] = train_predictions
-    
+
     ds_train_predictions = StandardDataset(
-        df_train_predictions, 
+        df_train_predictions,
         label_name="Class Label",
-        scores_name="Probabilities", 
+        scores_name="Probabilities",
         favorable_classes=[1],
-        protected_attribute_names=["Is Privileged"], 
+        protected_attribute_names=["Is Privileged"],
         privileged_classes=[[1]]
     )
-    
+
     return ds_train_true_labels, ds_train_predictions
- 
- 
+
+
 def covert_to_datasets_validation(x_validation, validation_predictions: np.array, validation_probabilities: np.array, privilege_validation: np.array) -> tuple[StandardDataset, StandardDataset]:
     """Converts the validation data into aif360.datasets StandardDataset objects. Objects of this type are required for the debiasing methods implemented in aif360. These datasets are primarily used in post-processing debiasing methodologies. I personally find these a bit unintuitive to work with, so have attempted to not require the user consider their implementation.
 
@@ -79,34 +80,35 @@ def covert_to_datasets_validation(x_validation, validation_predictions: np.array
         tuple[StandardDataset, StandardDataset]: 
             The first dataset (ds_validation_predictions) contains the validation data, privilege statuses, probability of belonging to the privileged class, and predicted class label.
             The second dataset (ds_validation_to_predict) contains the validation data and privilege statuses. A class label is also required, which we set entirely to zeros to prevent information leakage. 
-            
+
     """
     df_x_validation = _to_pandas_dataframe(x_validation)
     df_x_validation["Is Privileged"] = privilege_validation
-    
+
     df_validation_predictions = df_x_validation.copy()
     df_validation_predictions["Probabilities"] = validation_probabilities
     df_validation_predictions["Class Label"] = validation_predictions
-    
+
     ds_validation_predictions = StandardDataset(
-        df_validation_predictions, 
+        df_validation_predictions,
         label_name="Class Label",
-        scores_name="Probabilities", 
+        scores_name="Probabilities",
         favorable_classes=[1],
-        protected_attribute_names=["Is Privileged"], 
+        protected_attribute_names=["Is Privileged"],
         privileged_classes=[[1]]
-    ) 
-    
-    # Some debiasing methodologies need a dataset not only for training but also application. This dataset exists for that purpose, and hides class labels so that the information cannot leak   
+    )
+
+    # Some debiasing methodologies need a dataset not only for training but also application. This dataset exists for that purpose, and hides class labels so that the information cannot leak
     df_validation_to_predict = df_x_validation.copy()
-    df_validation_to_predict["Class Label"] = np.zeros(len(df_validation_to_predict))
-    
+    df_validation_to_predict["Class Label"] = np.zeros(
+        len(df_validation_to_predict))
+
     ds_validation_to_predict = StandardDataset(
-        df_validation_to_predict, 
+        df_validation_to_predict,
         label_name="Class Label",
         favorable_classes=[1],
-        protected_attribute_names=["Is Privileged"], 
+        protected_attribute_names=["Is Privileged"],
         privileged_classes=[[1]]
-    )    
-    
+    )
+
     return ds_validation_predictions, ds_validation_to_predict
