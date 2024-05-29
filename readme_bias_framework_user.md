@@ -211,9 +211,6 @@ I currently record results in dictionaries, however this provides a somewhat con
 
 I feel like this framework is either already complex enough or will become complex enough that the main class should do nothing more than orchestrate the interaction between classes. 
 
-### Random seed for bias framework
-
-I have already implemented random seeds for some functions, but not everywhere. Right now, there is no way for a user to enforce a consistent result, which is important for testing. 
 
 ### Unit test code
 

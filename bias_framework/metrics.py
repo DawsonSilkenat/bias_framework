@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 import warnings
+from multiprocessing import Pool
+from functools import partial
 
 
 def get_error_metrics(y_true_values: np.array, y_predicted_values: np.array) -> dict[str, float]:
@@ -17,7 +19,6 @@ def get_error_metrics(y_true_values: np.array, y_predicted_values: np.array) -> 
         dict[str, float]: A dictionary of metric name to metric value
     """
 
-    # These metrics were selected due to their use in the Bias Mitigation Methods paper. There exist more we could include, but not a priority at this stage
     metrics = dict()
     metrics["accuracy"] = accuracy_score(y_true_values, y_predicted_values)
     metrics["recall positive class"] = recall_score(
@@ -82,7 +83,7 @@ def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, 
     )
 
     classification_metric = ClassificationMetric(ds_true_class, ds_predicted_class, unprivileged_groups=[
-                                                 {"Is Privileged": 0}], privileged_groups=[{"Is Privileged": 1}])
+                                                 {"Is Privileged": False}], privileged_groups=[{"Is Privileged": True}])
 
     metrics = dict()
 
@@ -95,17 +96,10 @@ def get_fairness_metrics(y_true_values: np.array, y_predicted_values: np.array, 
         metrics["average odds difference"] = classification_metric.average_abs_odds_difference()
         metrics["equal opportunity difference"] = abs(
             classification_metric.equal_opportunity_difference())
+        metrics["false positive rate difference"] = abs(
+            classification_metric.false_positive_rate_difference())
         metrics["error rate difference"] = abs(
             classification_metric.error_rate_difference())
-
-        # disparate_impact = classification_metric.disparate_impact()
-        # if disparate_impact > 1:
-        #     disparate_impact = 1 / disparate_impact
-        # metrics["disparate impact"] = disparate_impact
-
-        # classification_metric.true_positive_rate_difference # Same as equal_opportunity_difference
-        # classification_metric.false_discovery_rate_difference
-        # classification_metric.generalized_equalized_odds_difference
 
     return metrics
 
@@ -135,14 +129,29 @@ def get_all_metrics(y_true_values: np.array, y_predicted_values: np.array, privi
     }
 
 
-def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array, privilege_status: np.array, repetitions: int = 200, seed=None) -> dict[str, dict[str, dict[str, float]]]:
+def _bootstrap_sample_metrics(y_true_values: np.array, y_predicted_values: np.array, privilege_status: np.array, random_state: int=None, stratify: bool=False):
+    """Helper function for bootstrap_all_metrics to allow multiprocessing. Computes a single bootstrap sample and returns the required metrics for it. y_true_values, y_predicted_values, privilege_status, and stratify mirror the arguments of bootstrap_all_metrics, while random_state is expected to be an 
+    """
+    return get_all_metrics(
+        *resample(
+            y_true_values,
+            y_predicted_values,
+            privilege_status,
+            random_state=random_state,
+            stratify=privilege_status if stratify else None
+        )
+    )
+
+
+def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array, privilege_status: np.array, repetitions: int=200, stratify: bool=False, seed: int=None) -> dict[str, dict[str, dict[str, float]]]:
     """Applies bootstrap resampling in order to estimate a number of summary statistics on the results found by get_all_metrics
     Args:
         y_true_values (np.array): The true classes for a dataset
         y_predicted_values (np.array): The model predicted classes for the same dataset as y_true_values
         privilege_status (np.array): Whether the individual to which each class is assigned belongs to the privileged group or unprivileged group
         repetitions (int, optional): How many bootstrap samples should be taken
-        seed: Any valid input to np.random.default_rng, used for repeatability 
+        stratify (bool, optional): Whether to stratify the bootstrap samples by privilege_status, ensuring representation of both groups match that of the original sample
+        seed (int, optional): Any valid input to np.random.default_rng, used for repeatability of a result
     Returns:
         dict[str, dict[str, dict[str, float]]]: A dictionary of metric type to a dictionary of metric name to a dictionary of summary statistic name to value
 
@@ -158,23 +167,36 @@ def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array,
         "error" : {...}   
     }
     """
-    values = get_all_metrics(
+
+    # We expect that these will all be boolean arrays, so make sure they are of this type to reduce memory usage
+    y_true_values = y_true_values.astype(bool)
+    y_predicted_values = y_predicted_values.astype(bool)
+    privilege_status = privilege_status.astype(bool)
+
+    base_values = get_all_metrics(
         y_true_values, y_predicted_values, privilege_status)
 
     # Since sklearn.utils.resample does not support using np.random.default_rng directly, we will generate random numbers
     # to use as the random state argument. We set the range of these randomly generated numbers to the square of the number
     # of repetitions since this gives us around a 0.6 probability of having no repeats. A couple of repeats is ok, but
-    # we want the samples to be as independent as possible
+    # we want the samples to be as independent as possible. A cube would be better, giving us around a 0.9 probability but
+    # would restrict repetitions from exceeding 1000 by much. 
+    # We take the random values approach to increase independence between runs with different seeds
+    # TODO an alternative would be to take seed * some_number * i, but leaves open some highly correlated seed values
     rng = np.random.default_rng(seed)
     random_range = repetitions ** 2
 
-    # Record the result of each repetition
-    bootstrapped_metrics = []
-    for _ in range(repetitions):
-        true_values_boot, predicted_values_boot, privilege_status_boot = resample(
-            y_true_values, y_predicted_values, privilege_status, random_state=rng.integers(random_range))
-        bootstrapped_metrics.append(get_all_metrics(
-            true_values_boot, predicted_values_boot, privilege_status_boot))
+    # Apply multiprocessing to save time, the order in which we get the statistics doesn't matter
+    bootstrap_partial = partial(_bootstrap_sample_metrics, y_true_values,
+                                y_predicted_values, privilege_status, stratify=stratify)
+    with Pool(processes=4) as pool:
+        bootstrapped_metrics = list(
+            pool.imap_unordered(
+                bootstrap_partial,
+                [rng.integers(random_range) for _ in range(repetitions)],
+                chunksize=50
+            )
+        )
 
     # Create the dictionary to return containing the calculated statistics about each metric
     metric_stats = dict()
@@ -185,23 +207,26 @@ def bootstrap_all_metrics(y_true_values: np.array, y_predicted_values: np.array,
             metric_results = [result[metric_type][metric_name]
                               for result in bootstrapped_metrics]
 
-            # TODO I should consider alternative ways of approaching this, but for now it is good enough
             # For some metrics and subsamples we get NaN results, which makes all our statistics NaN if included. Thus, exclude any NaN values
             metric_results = [
                 result for result in metric_results if not np.isnan(result)]
             if len(metric_results) == 0:
                 continue
 
-            value = values[metric_type][metric_name]
-            std = np.std(metric_results)
+            value = base_values[metric_type][metric_name]
+            min_value, lower_confidence_interval, lower_quartile, median, upper_quartile, upper_confidence_interval, max_value = np.percentile(
+                metric_results, [0, 17, 25, 50, 75, 83, 100])
 
             metric_stats[metric_type][metric_name] = {
                 "value": value,
-                "standard deviation": std,
-                "confidence interval": scipy.stats.norm.interval(0.95, loc=value, scale=std) if std != 0 else (value, value),
+                "mean": np.mean(metric_results),
+                "median": median,
+                "confidence interval": [lower_confidence_interval, upper_confidence_interval],
+                "inter quartile range": [lower_quartile, upper_quartile],
+                "range": [min_value, max_value],
+                "standard deviation": np.std(metric_results),
                 "skew": scipy.stats.skew(metric_results),
-                "kurtosis": scipy.stats.kurtosis(metric_results),
-                "quartiles": np.percentile(metric_results, [0, 25, 50, 75, 100])
+                "kurtosis": scipy.stats.kurtosis(metric_results)
             }
 
     return metric_stats

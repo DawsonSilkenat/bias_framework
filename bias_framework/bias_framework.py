@@ -117,7 +117,9 @@ class Bias_Framework:
         ds_validation_predictions, ds_validation_no_labels = covert_to_datasets_validation(
             x_validation, validation_predictions, validation_probabilities, self.privilege_validation)
 
-        raw_results = dict()
+        raw_results = {
+            "no debiasing": validation_predictions
+        }
 
         start = time.time()
         debiasing_result = learning_fair_representation(
@@ -149,10 +151,15 @@ class Bias_Framework:
         raw_results.update(debiasing_result)
         print(f"{time.time() - start} seconds to run equal odds")
 
+        start = time.time()
         self.__metrics_by_debiasing_technique = {key: bootstrap_all_metrics(
             self.y_validation, value, self.privilege_validation, seed=seed) for key, value in raw_results.items()}
+        print(f"{time.time() - start} seconds to bootstrap metrics")
+        
+        start = time.time()
         self.__debiasing_graph = DebiasingGraphsObject(
             self.__metrics_by_debiasing_technique, fairea_curve)
+        print(f"{time.time() - start} seconds to compute graph object")
 
     def get_debias_methodologies(self) -> list[str]:
         if self.__debiasing_graph is None:

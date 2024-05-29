@@ -22,11 +22,11 @@ def _to_pandas_dataframe(input: ArrayLike) -> pd.DataFrame:
     return df_input
 
 
-def covert_to_datasets_train(x_train, y_train: np.array, train_predictions: np.array, train_probabilities: np.array, privilege_train: np.array) -> tuple[StandardDataset, StandardDataset]:
+def covert_to_datasets_train(x_train: ArrayLike, y_train: np.array, train_predictions: np.array, train_probabilities: np.array, privilege_train: np.array) -> tuple[StandardDataset, StandardDataset]:
     """Converts the training data into aif360.datasets StandardDataset objects. Objects of this type are required for the debiasing methods implemented in aif360. These datasets are primarily used in pre-processing debiasing methodologies. I personally find these a bit unintuitive to work with, so have attempted to not require the user consider their implementation.
 
     Args:
-        x_train: The training data, after any preprocessing is applied. 
+        x_train (ArrayLike): The training data, after any preprocessing is applied. 
         y_train (np.array): The training labels
         train_predictions (np.array): The class labels assigned to x_train by the ml model we wish to debias
         train_probabilities (np.array): The probabilities of the correct class label being the positive class, as assigned by the ml model we wish to debias. 
@@ -67,11 +67,11 @@ def covert_to_datasets_train(x_train, y_train: np.array, train_predictions: np.a
     return ds_train_true_labels, ds_train_predictions
 
 
-def covert_to_datasets_validation(x_validation, validation_predictions: np.array, validation_probabilities: np.array, privilege_validation: np.array) -> tuple[StandardDataset, StandardDataset]:
+def covert_to_datasets_validation(x_validation: ArrayLike, validation_predictions: np.array, validation_probabilities: np.array, privilege_validation: np.array) -> tuple[StandardDataset, StandardDataset]:
     """Converts the validation data into aif360.datasets StandardDataset objects. Objects of this type are required for the debiasing methods implemented in aif360. These datasets are primarily used in post-processing debiasing methodologies. I personally find these a bit unintuitive to work with, so have attempted to not require the user consider their implementation.
 
     Args:
-        x_validation: The validation data, after any preprocessing is applied. 
+        x_validation (ArrayLike): The validation data, after any preprocessing is applied. 
         validation_predictions (np.array): The class labels assigned to x_validation by the ml model we wish to debias
         validation_probabilities (np.array): The probabilities of the correct class label being the positive class, as assigned by the ml model we wish to debias. 
         privilege_validation (np.array): Binary array, the ith entry of which is a 1 if the ith element of the validation data belongs to the privileged group, and 0 otherwise
@@ -112,3 +112,7 @@ def covert_to_datasets_validation(x_validation, validation_predictions: np.array
     )
 
     return ds_validation_predictions, ds_validation_to_predict
+
+
+def get_features_without_privileged_status(ds_get_features_from: StandardDataset) -> np.array:
+    return np.delete(ds_get_features_from.features, ds_get_features_from.feature_names.index("Is Privileged"), axis=1)

@@ -4,6 +4,7 @@ from aif360.algorithms.preprocessing import LFR, Reweighing
 from aif360.algorithms.postprocessing.reject_option_classification import RejectOptionClassification
 from aif360.algorithms.postprocessing.calibrated_eq_odds_postprocessing import CalibratedEqOddsPostprocessing
 from aif360.algorithms.postprocessing.eq_odds_postprocessing import EqOddsPostprocessing
+from .dataset_processing import get_features_without_privileged_status
 
 
 def no_debiasing(model, x_train, x_validation, y_train) -> tuple[np.array, np.array, np.array, np.array]:
@@ -32,7 +33,7 @@ def no_debiasing(model, x_train, x_validation, y_train) -> tuple[np.array, np.ar
 # TODO all of the summaries could include a more complete description of how the debiasing methodology works
 
 
-def learning_fair_representation(model, ds_train_true_labels: StandardDataset, ds_validation_to_predict: StandardDataset, number_of_prototypes: list[int] = None, seed: int = None) -> dict[str, np.array]:
+def learning_fair_representation(model, ds_train_true_labels: StandardDataset, ds_validation_to_predict: StandardDataset, number_of_prototypes: list[int]=None, seed: int=None) -> dict[str, np.array]:
     """Apply the learning fair representation debiasing methodology and return the predictions
 
     Args:
@@ -64,7 +65,7 @@ def learning_fair_representation(model, ds_train_true_labels: StandardDataset, d
         if len(classes) == 1:
             # It is reasonable to assume that if only one class exists in the training data, it will be the only predicted value.
             predicted_values = np.full(
-                len(ds_train_transformed.labels.ravel()), classes[0])
+                len(ds_validation_to_predict.labels.ravel()), classes[0])
         else:
             # I'm not entirely clear on why, but this methodology seem to get better results with the updated labels. I should read more and attempt to leave a comment explaining why. If you are reading this, here is the link to the paper: http://proceedings.mlr.press/v28/zemel13.pdf
             model.fit(ds_train_transformed.features,
@@ -91,18 +92,19 @@ def reweighting(model, ds_train_true_labels: StandardDataset, ds_validation_to_p
         dict[str, np.array]: Maps the string 'reweighting' to the model predictions
     """
     results = dict()
-    reweighing = Reweighing(unprivileged_groups=[
-                            {"Is Privileged": 0}], privileged_groups=[{"Is Privileged": 1}])
+    reweighing = Reweighing(unprivileged_groups=[{"Is Privileged": 0}],
+                            privileged_groups=[{"Is Privileged": 1}])
     ds_transformed_data = reweighing.fit_transform(ds_train_true_labels)
 
-    model.fit(ds_transformed_data.features, ds_transformed_data.labels.ravel(
-    ), sample_weight=ds_transformed_data.instance_weights)
-    results["reweighting"] = model.predict(ds_validation_to_predict.features)
+    model.fit(get_features_without_privileged_status(ds_transformed_data),
+              ds_transformed_data.labels.ravel(), sample_weight=ds_transformed_data.instance_weights)
+    results["reweighting"] = model.predict(
+        get_features_without_privileged_status(ds_validation_to_predict))
 
     return results
 
 
-def reject_option_classification(ds_train_true_labels: StandardDataset, ds_train_predictions: StandardDataset, ds_validation_predictions: StandardDataset, bias_metrics: list[str] = None) -> dict[str, np.array]:
+def reject_option_classification(ds_train_true_labels: StandardDataset, ds_train_predictions: StandardDataset, ds_validation_predictions: StandardDataset, bias_metrics: list[str]=None) -> dict[str, np.array]:
     """Apply the reject option classification debiasing methodology and return the predictions
 
     Args:
@@ -137,7 +139,7 @@ def reject_option_classification(ds_train_true_labels: StandardDataset, ds_train
     return results
 
 
-def calibrated_equal_odds(ds_train_true_labels: StandardDataset, ds_train_predictions: StandardDataset, ds_validation_predictions: StandardDataset, cost_constraints: list[str] = None, seed: int = None) -> dict[str, np.array]:
+def calibrated_equal_odds(ds_train_true_labels: StandardDataset, ds_train_predictions: StandardDataset, ds_validation_predictions: StandardDataset, cost_constraints: list[str]=None, seed: int=None) -> dict[str, np.array]:
     """Apply the calibrated equal odds debiasing methodology and return the predictions
 
     Args:
@@ -148,7 +150,7 @@ def calibrated_equal_odds(ds_train_true_labels: StandardDataset, ds_train_predic
         seed (int, optional): Random seed for consistent results. Defaults to None. 
 
     Returns:
-        dict[str, np.array]: Maps a string, including the cost used ,to the model predictions
+        dict[str, np.array]: Maps a string, including the cost used, to the model predictions
     """
     if cost_constraints is None:
         cost_constraints = ["fpr", "fnr", "weighted"]
@@ -168,7 +170,7 @@ def calibrated_equal_odds(ds_train_true_labels: StandardDataset, ds_train_predic
     return results
 
 
-def equal_odds(ds_train_true_labels: StandardDataset, ds_train_predictions: StandardDataset, ds_validation_predictions: StandardDataset, seed: int = None) -> dict[str, np.array]:
+def equal_odds(ds_train_true_labels: StandardDataset, ds_train_predictions: StandardDataset, ds_validation_predictions: StandardDataset, seed: int=None) -> dict[str, np.array]:
     """Apply the equal odds debiasing methodology and return the predictions
 
     Args:
