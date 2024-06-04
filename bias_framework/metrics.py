@@ -130,7 +130,7 @@ def get_all_metrics(y_true_values: np.array, y_predicted_values: np.array, privi
 
 
 def _bootstrap_sample_metrics(y_true_values: np.array, y_predicted_values: np.array, privilege_status: np.array, random_state: int=None, stratify: bool=False):
-    """Helper function for bootstrap_all_metrics to allow multiprocessing. Computes a single bootstrap sample and returns the required metrics for it. y_true_values, y_predicted_values, privilege_status, and stratify mirror the arguments of bootstrap_all_metrics, while random_state is expected to be an 
+    """Helper function for bootstrap_all_metrics to allow multiprocessing. Computes a single bootstrap sample and returns the required metrics for it. y_true_values, y_predicted_values, privilege_status, and stratify mirror the arguments of bootstrap_all_metrics, while random_state is expected to be an integer 
     """
     return get_all_metrics(
         *resample(
